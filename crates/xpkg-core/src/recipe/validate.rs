@@ -51,14 +51,16 @@ pub fn validate_recipe(recipe: &Recipe) -> Result<(), XpkgError> {
         if !url.contains("://") && !url.contains("${") {
             continue;
         }
-        if url.contains("://")
-            && !url.starts_with("https://")
-            && !url.starts_with("http://")
-            && !url.starts_with("ftp://")
-            && !url.starts_with("file://")
-        {
+        let allowed_scheme = url.starts_with("https://")
+            || url.starts_with("http://")
+            || url.starts_with("ftp://")
+            || url.starts_with("file://")
+            || url.starts_with("git://")
+            || url.starts_with("git+https://")
+            || url.starts_with("git+http://");
+        if url.contains("://") && !allowed_scheme {
             errors.push(format!(
-                "source URL '{}' has an unsupported scheme (expected http, https, ftp, or file)",
+                "source URL '{}' has an unsupported scheme (expected http, https, ftp, file, or git)",
                 url
             ));
         }
@@ -208,5 +210,16 @@ mod tests {
         let mut r = minimal_recipe();
         r.source.urls = vec!["gopher://old.server/file".into()];
         assert!(validate_recipe(&r).is_err());
+    }
+
+    #[test]
+    fn test_git_url_schemes_allowed() {
+        let mut r = minimal_recipe();
+        r.source.urls = vec![
+            "git+https://example.com/repo.git#tag=v1.0".into(),
+            "git+http://example.com/repo.git".into(),
+            "git://example.com/repo.git".into(),
+        ];
+        assert!(validate_recipe(&r).is_ok());
     }
 }

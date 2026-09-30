@@ -52,11 +52,13 @@ xpkg build -d /tmp/mybuild -o ./pkgs  # Custom build and output dirs
 **Build pipeline steps:**
 
 1. Parse and validate the recipe
-2. Apply CLI overrides (builddir, outdir)
-3. Run the build pipeline (prepare → build → check → package)
-4. Strip ELF binaries (if `strip_binaries = true` in config)
-5. Create `.xp` archive (tar.zst by default)
-6. Sign the package (if `--sign` or `sign = true` in config)
+2. Lint the recipe sources (`source-unpinned` warnings are reported, never fatal)
+3. Apply CLI overrides (builddir, outdir)
+4. Run the build pipeline (prepare → build → check → package)
+5. Strip ELF binaries (if `strip_binaries = true` in config)
+6. Create `.xp` archive with extended `.BUILDINFO` provenance
+   (`x:recipe_sha256`, `x:source_commit`, `x:tool_version`)
+7. Sign the package (if `--sign` or `sign = true` in config)
 
 ---
 
@@ -91,6 +93,9 @@ xpkg lint hello-2.12-1-x86_64.xp --strict # Fail on any warning
 - Metadata checks — `.PKGINFO` completeness and correctness
 - Dependency checks — ELF dependencies vs declared depends
 - ELF analysis — RPATH, TEXTREL, stack protector
+
+Recipe-level source checks (`source-unpinned`) run at the start of
+`xpkg build`, not on a built archive.
 
 See [Linting Rules](LINTING.md) for the complete list.
 
@@ -340,6 +345,7 @@ xpkg repo-remove myrepo.db.tar.zst hello --sign
 | Variable | Description |
 |----------|-------------|
 | `RUST_LOG` | Override tracing log level filter (e.g. `RUST_LOG=debug`) |
+| `SOURCE_DATE_EPOCH` | Unix timestamp used for metadata `builddate` and tar entry mtimes |
 
 During builds, these variables are set in the build environment:
 

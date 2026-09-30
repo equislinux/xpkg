@@ -2838,6 +2838,7 @@ dependencies = [
  "anyhow",
  "clap",
  "serde_json",
+ "sha2",
  "tar",
  "tempfile",
  "tracing",

@@ -88,10 +88,13 @@ retention-enabled repo → install with `xpm` → downgrade one package from
   re-adding a version updates its entry instead of duplicating it.
 - Each entry records `version` (`version-release`), `filename`, the
   `.xp` `sha256`, `builddate` (epoch), the `.sig` name when present, and a
-  `source` object when provenance data is available. Today `source` is filled
-  from the extended `.BUILDINFO` fields if they exist
-  (`x:source_url`/`x:source_sha256`/`x:source_commit`, phase 3), falling back
-  to the `.PKGINFO` `url`; when there is no data the field is omitted.
+  `source` object when provenance data is available. `source` is read from
+  extended `.BUILDINFO` fields when present (`x:source_url`,
+  `x:source_sha256`, `x:source_commit`), falling back to the `.PKGINFO`
+  `url`; when there is no data the field is omitted. The current builder
+  emits `x:source_commit` (phase 3) but not `x:source_url`/`x:source_sha256`,
+  so most packages expose the project URL plus, for pinned Git sources, the
+  exact commit.
 - `history.json.sig` is produced when a secret key is available
   (`sign_key` in `xpkg.conf`, or `repo-add --sign`). If the index changes and
   no key is configured, an existing `history.json.sig` is removed with a
@@ -105,14 +108,44 @@ retention-enabled repo → install with `xpm` → downgrade one package from
   versions yet; publishing flows that use it must keep old `.xp` files in the
   deployed layout themselves.
 
-### Phase 3 — `.BUILDINFO` provenance + lint rule (pending)
+### Phase 3 — `.BUILDINFO` provenance + lint rule (done)
 
-`history.json` already reads the extended keys opportunistically, but the
-builder does not emit `x:source_commit`, `x:recipe_sha256` or
-`x:tool_version` yet, and the "no checksum and no pinned commit" lint rule is
-not implemented.
+- `create_package` receives a `BuildProvenance` and `generate_buildinfo`
+  appends the extended keys at the end of the file, leaving the historical
+  `key = value` format intact:
+  - `x:recipe_sha256` — SHA-256 of the recipe file (XBUILD or PKGBUILD)
+    used for the build.
+  - `x:source_commit` — exact commit of the first Git source with an
+    explicit `#commit=`/`#tag=`/`#branch=` reference, when resolvable. It is
+    omitted when no source declares such a reference.
+  - `x:tool_version` — always emitted (`CARGO_PKG_VERSION`).
+- Git source URLs now accept makepkg-style fragments: `#commit=`,
+  `#tag=` and `#branch=`. The source manager clones the repository, checks
+  out the requested reference (a bare commit requires clone + checkout) and,
+  when a fetched source tree is provided to `BuildProvenance::collect`, the
+  exact commit is read from the clone's `HEAD`. Without a local clone, tags
+  and branches are resolved best-effort with `git ls-remote` (tags use the
+  peeled `^{}` ref so annotated tags yield the commit); `commit=` values are
+  used verbatim. Resolution failures are logged and the line is omitted
+  instead of failing the build.
+- Recipe validation accepts the Git schemes (`git://`, `git+https://`,
+  `git+http://`) in addition to http/https/ftp/file.
+- New lint rule `source-unpinned` (warning): a source with no usable
+  checksum (`sha256sums`/`sha512sums`, `SKIP` does not count) and no pinned
+  Git commit/tag. `#branch=` and floating Git URLs are not pinned because
+  they can move. The rule is recipe-level and runs at the start of
+  `xpkg build`; diagnostics are reported but never stop the build.
 
-### Phase 4 — `SOURCE_DATE_EPOCH` support (pending)
+### Phase 4 — `SOURCE_DATE_EPOCH` support (done)
+
+- When `SOURCE_DATE_EPOCH` is set to a valid Unix timestamp, it is used for
+  the `.PKGINFO` / `.BUILDINFO` `builddate` and for the mtime of every tar
+  entry (metadata, files, directories and symlinks). Without the variable
+  the builder keeps using the current time.
+- This is reproducibility groundwork, not a full guarantee: it makes
+  metadata timestamps comparable across machines, but full Nix-style binary
+  reproducibility is still not promised (compilers, absolute paths and
+  archive ordering can vary).
 
 ### Phase 5 — end-to-end integration with xpm (pending, #56)
 

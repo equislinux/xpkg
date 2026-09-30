@@ -45,6 +45,22 @@ recognized as a Git source if it matches any of:
 
 The `git+` prefix is stripped before passing to `git clone`.
 
+#### Pinned references
+
+A Git URL may select an exact revision with a fragment:
+
+| Fragment | Behavior |
+|----------|----------|
+| `#commit=<sha>` | Full clone followed by `git checkout <sha>` |
+| `#tag=<tag>` | `git clone --depth 1 --branch <tag>` |
+| `#branch=<branch>` | `git clone --depth 1 --branch <branch>` |
+
+`#tag=` and `#commit=` are immutable pins; `#branch=` is recorded but can
+move. When building, the exact commit of the first pinned Git source is
+resolved (from the clone's `HEAD`, or with `git ls-remote` for tags and
+branches when no local clone exists) and stored in `.BUILDINFO` as
+`x:source_commit`.
+
 ---
 
 ## Checksum Verification
@@ -115,7 +131,10 @@ For each source URL in the recipe, in order:
 
 ```
 1. Is it a git URL?
-   ├─ Yes → git clone into srcdir/<repo-name>/
+   ├─ Yes → parse #commit=/#tag=/#branch=
+   │        ├─ commit → git clone + git checkout
+   │        ├─ tag/branch → git clone --depth 1 --branch
+   │        └─ none → git clone (default branch)
    └─ No  → continue
 2. Is it cached?
    ├─ Yes → copy from cache to srcdir/

@@ -105,6 +105,20 @@ fn cmd_build(config: &XpkgConfig, args: &cli::BuildArgs) -> Result<()> {
         "recipe loaded"
     );
 
+    // ── Recipe lint (source integrity) ──────────────────────────────
+    // Warnings are reported but never stop the build.
+    let lint = xpkg_core::lint::lint_recipe(&raw_recipe, false);
+    if lint.total() > 0 {
+        use xpkg_core::lint::{format_report, ReportFormat};
+        eprintln!("==> Recipe lint:");
+        eprint!("{}", format_report(&lint, ReportFormat::Human));
+    }
+
+    // ── Collect provenance for the extended .BUILDINFO ──────────────
+    // Captured before building so the hashed recipe and resolved commit
+    // match the inputs of this build.
+    let provenance = xpkg_core::metadata::BuildProvenance::collect(&recipe_path, &raw_recipe, None);
+
     // ── Apply CLI overrides to config ───────────────────────────────
     let mut build_config = config.clone();
     if let Some(ref builddir) = args.builddir {
@@ -142,8 +156,14 @@ fn cmd_build(config: &XpkgConfig, args: &cli::BuildArgs) -> Result<()> {
 
     // ── Create .xp archive ──────────────────────────────────────────
     let outdir = &build_config.options.outdir;
-    let pkg = create_package(&build_config, &raw_recipe, &result.pkgdir, outdir)
-        .with_context(|| "failed to create package archive")?;
+    let pkg = create_package(
+        &build_config,
+        &raw_recipe,
+        &result.pkgdir,
+        outdir,
+        &provenance,
+    )
+    .with_context(|| "failed to create package archive")?;
 
     println!("==> Package: {}", pkg.archive_path.display());
     println!("    Size: {:.1} KiB", pkg.archive_size as f64 / 1024.0);

@@ -6,9 +6,20 @@
 
 use crate::config::XpkgConfig;
 use crate::recipe::Recipe;
+use crate::repro;
+
+use super::BuildProvenance;
 
 /// Generate the `.BUILDINFO` file content.
-pub fn generate_buildinfo(recipe: &Recipe, config: &XpkgConfig) -> String {
+///
+/// The historical `key = value` format is preserved; extended provenance
+/// fields (`x:source_commit`, `x:recipe_sha256`, `x:tool_version`) are
+/// appended at the end and ignored by readers that do not know them.
+pub fn generate_buildinfo(
+    recipe: &Recipe,
+    config: &XpkgConfig,
+    provenance: &BuildProvenance,
+) -> String {
     let pkg = &recipe.package;
     let mut out = String::new();
 
@@ -20,7 +31,7 @@ pub fn generate_buildinfo(recipe: &Recipe, config: &XpkgConfig) -> String {
     out.push_str(&format!("pkgver = {}-{}\n", pkg.version, pkg.release));
 
     // Build environment.
-    out.push_str(&format!("builddate = {}\n", current_timestamp()));
+    out.push_str(&format!("builddate = {}\n", repro::build_timestamp()));
     out.push_str(&format!(
         "builddir = {}\n",
         config.options.builddir.display()
@@ -54,15 +65,16 @@ pub fn generate_buildinfo(recipe: &Recipe, config: &XpkgConfig) -> String {
         config.options.compress_level
     ));
 
-    out
-}
+    // Extended provenance (backward compatible: unknown keys are ignored).
+    if let Some(commit) = &provenance.source_commit {
+        out.push_str(&format!("x:source_commit = {commit}\n"));
+    }
+    if let Some(sha256) = &provenance.recipe_sha256 {
+        out.push_str(&format!("x:recipe_sha256 = {sha256}\n"));
+    }
+    out.push_str(&format!("x:tool_version = {}\n", env!("CARGO_PKG_VERSION")));
 
-/// Current Unix timestamp in seconds.
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    out
 }
 
 #[cfg(test)]
@@ -92,21 +104,29 @@ mod tests {
 
     #[test]
     fn test_buildinfo_contains_package_identity() {
-        let info = generate_buildinfo(&test_recipe(), &XpkgConfig::default());
+        let info = generate_buildinfo(
+            &test_recipe(),
+            &XpkgConfig::default(),
+            &BuildProvenance::default(),
+        );
         assert!(info.contains("pkgname = test-pkg\n"));
         assert!(info.contains("pkgver = 2.0-3\n"));
     }
 
     #[test]
     fn test_buildinfo_contains_buildtool() {
-        let info = generate_buildinfo(&test_recipe(), &XpkgConfig::default());
+        let info = generate_buildinfo(
+            &test_recipe(),
+            &XpkgConfig::default(),
+            &BuildProvenance::default(),
+        );
         assert!(info.contains("buildtool = xpkg "));
     }
 
     #[test]
     fn test_buildinfo_contains_environment_flags() {
         let config = XpkgConfig::default();
-        let info = generate_buildinfo(&test_recipe(), &config);
+        let info = generate_buildinfo(&test_recipe(), &config, &BuildProvenance::default());
         assert!(info.contains("CFLAGS = -march=x86-64 -O2 -pipe\n"));
         assert!(info.contains("CXXFLAGS = -march=x86-64 -O2 -pipe\n"));
         assert!(info.contains("MAKEFLAGS = -j$(nproc)\n"));
@@ -115,14 +135,61 @@ mod tests {
     #[test]
     fn test_buildinfo_omits_empty_ldflags() {
         let config = XpkgConfig::default();
-        let info = generate_buildinfo(&test_recipe(), &config);
+        let info = generate_buildinfo(&test_recipe(), &config, &BuildProvenance::default());
         assert!(!info.contains("LDFLAGS"));
     }
 
     #[test]
     fn test_buildinfo_contains_compression() {
-        let info = generate_buildinfo(&test_recipe(), &XpkgConfig::default());
+        let info = generate_buildinfo(
+            &test_recipe(),
+            &XpkgConfig::default(),
+            &BuildProvenance::default(),
+        );
         assert!(info.contains("compress = zstd\n"));
         assert!(info.contains("compress_level = 19\n"));
+    }
+
+    #[test]
+    fn test_buildinfo_contains_extended_provenance() {
+        let provenance = BuildProvenance {
+            recipe_sha256: Some("abc123".into()),
+            source_commit: Some("deadbeef".into()),
+        };
+        let info = generate_buildinfo(&test_recipe(), &XpkgConfig::default(), &provenance);
+
+        assert!(info.contains("x:source_commit = deadbeef\n"));
+        assert!(info.contains("x:recipe_sha256 = abc123\n"));
+        assert!(info.contains(&format!("x:tool_version = {}\n", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn test_buildinfo_appends_extended_fields_at_the_end() {
+        let provenance = BuildProvenance {
+            recipe_sha256: Some("abc123".into()),
+            source_commit: Some("deadbeef".into()),
+        };
+        let info = generate_buildinfo(&test_recipe(), &XpkgConfig::default(), &provenance);
+
+        // The historical format is untouched and the new keys come last.
+        let compress_pos = info.find("compress_level = 19").unwrap();
+        let commit_pos = info.find("x:source_commit").unwrap();
+        let recipe_pos = info.find("x:recipe_sha256").unwrap();
+        let tool_pos = info.find("x:tool_version").unwrap();
+        assert!(compress_pos < commit_pos);
+        assert!(commit_pos < recipe_pos);
+        assert!(recipe_pos < tool_pos);
+        assert!(info.ends_with(&format!("x:tool_version = {}\n", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn test_buildinfo_omits_unavailable_provenance() {
+        let info = generate_buildinfo(
+            &test_recipe(),
+            &XpkgConfig::default(),
+            &BuildProvenance::default(),
+        );
+        assert!(!info.contains("x:source_commit"));
+        assert!(!info.contains("x:recipe_sha256"));
     }
 }

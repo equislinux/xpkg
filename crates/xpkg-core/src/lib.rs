@@ -11,6 +11,7 @@ pub mod lint;
 pub mod metadata;
 pub mod recipe;
 pub mod repo;
+pub mod repro;
 pub mod signing;
 pub mod source;
 

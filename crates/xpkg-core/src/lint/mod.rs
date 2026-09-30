@@ -11,6 +11,7 @@
 //! - **Metadata** — .PKGINFO completeness, missing fields, invalid values
 //! - **Dependencies** — ELF shared library dependencies not declared in `depends`
 //! - **ELF analysis** — TEXTREL, missing stack protector, RPATH issues
+//! - **Sources** — recipe sources without checksum or pinned Git reference
 
 mod dependency;
 mod elf;
@@ -19,13 +20,16 @@ mod paths;
 mod permissions;
 mod report;
 mod rules;
+mod source;
 
 pub use report::{format_report, ReportFormat};
 pub use rules::{Diagnostic, LintResult, Severity};
+pub use source::RULE_SOURCE_UNPINNED;
 
 use std::path::Path;
 
 use crate::error::XpkgResult;
+use crate::recipe::Recipe;
 
 /// Run all lint checks on a package directory (PKGDIR) and its metadata.
 ///
@@ -53,4 +57,20 @@ pub fn lint_package(
     }
 
     Ok(result)
+}
+
+/// Run recipe-level lint checks (source integrity and pinning).
+///
+/// These checks run before a package exists, so they are not part of
+/// [`lint_package`]. The builder invokes them at the start of `xpkg build`
+/// and reports the diagnostics as warnings.
+pub fn lint_recipe(recipe: &Recipe, strict: bool) -> LintResult {
+    let mut result = LintResult::new();
+    source::check_sources(recipe, &mut result);
+
+    if strict {
+        result.apply_strict();
+    }
+
+    result
 }
