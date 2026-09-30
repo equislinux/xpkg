@@ -47,6 +47,9 @@ pub enum XpkgError {
     #[error("archive error: {0}")]
     Archive(String),
 
+    #[error("repository error: {0}")]
+    Repo(String),
+
     #[error("lint error: {0}")]
     Lint(String),
 

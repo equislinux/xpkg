@@ -14,12 +14,7 @@ use crate::repo::types::RepoEntry;
 
 /// Inspect a `.xp` package on disk and build a [`RepoEntry`].
 pub fn entry_from_package(package_path: &Path) -> XpkgResult<RepoEntry> {
-    let raw_bytes = fs::read(package_path).map_err(|e| {
-        XpkgError::Io(std::io::Error::new(
-            e.kind(),
-            format!("read package {}: {e}", package_path.display()),
-        ))
-    })?;
+    let raw_bytes = read_archive(package_path)?;
 
     let compressed_size = raw_bytes.len() as u64;
     let sha256sum = hex_sha256(&raw_bytes);
@@ -68,6 +63,11 @@ fn hex_sha256(data: &[u8]) -> String {
 }
 
 fn extract_pkginfo(archive_bytes: &[u8]) -> XpkgResult<String> {
+    extract_metadata(archive_bytes, ".PKGINFO")?
+        .ok_or_else(|| XpkgError::Archive("package does not contain .PKGINFO".into()))
+}
+
+fn extract_metadata(archive_bytes: &[u8], target: &str) -> XpkgResult<Option<String>> {
     let decoder = zstd::Decoder::new(archive_bytes)
         .map_err(|e| XpkgError::Archive(format!("zstd init: {e}")))?;
     let mut tar = tar::Archive::new(decoder);
@@ -83,18 +83,37 @@ fn extract_pkginfo(archive_bytes: &[u8]) -> XpkgResult<String> {
             .map_err(|e| XpkgError::Archive(format!("path: {e}")))?
             .to_path_buf();
 
-        if path.to_string_lossy().trim_start_matches("./") == ".PKGINFO" {
+        if path.to_string_lossy().trim_start_matches("./") == target {
             let mut content = String::new();
             entry
                 .read_to_string(&mut content)
-                .map_err(|e| XpkgError::Archive(format!("read .PKGINFO: {e}")))?;
-            return Ok(content);
+                .map_err(|e| XpkgError::Archive(format!("read {target}: {e}")))?;
+            return Ok(Some(content));
         }
     }
 
-    Err(XpkgError::Archive(
-        "package does not contain .PKGINFO".into(),
-    ))
+    Ok(None)
+}
+
+/// Read the `.PKGINFO` contents from a `.xp` package archive.
+pub fn read_pkginfo(package_path: &Path) -> XpkgResult<String> {
+    extract_pkginfo(&read_archive(package_path)?)
+}
+
+/// Read the `.BUILDINFO` contents from a `.xp` package archive, if present.
+///
+/// Older packages may not ship `.BUILDINFO`; in that case `None` is returned.
+pub fn read_buildinfo(package_path: &Path) -> XpkgResult<Option<String>> {
+    extract_metadata(&read_archive(package_path)?, ".BUILDINFO")
+}
+
+fn read_archive(package_path: &Path) -> XpkgResult<Vec<u8>> {
+    fs::read(package_path).map_err(|e| {
+        XpkgError::Io(std::io::Error::new(
+            e.kind(),
+            format!("read package {}: {e}", package_path.display()),
+        ))
+    })
 }
 
 type FieldMap = std::collections::HashMap<String, Vec<String>>;
@@ -160,12 +179,7 @@ fn normalize_pkg_version(pkgver_raw: String, pkgrel_raw: Option<String>) -> (Str
 ///
 /// Excludes metadata files (`.PKGINFO`, `.BUILDINFO`, `.MTREE`, `.INSTALL`).
 pub fn list_package_files(package_path: &Path) -> XpkgResult<Vec<String>> {
-    let raw_bytes = fs::read(package_path).map_err(|e| {
-        XpkgError::Io(std::io::Error::new(
-            e.kind(),
-            format!("read package {}: {e}", package_path.display()),
-        ))
-    })?;
+    let raw_bytes = read_archive(package_path)?;
 
     let decoder = zstd::Decoder::new(raw_bytes.as_slice())
         .map_err(|e| XpkgError::Archive(format!("zstd init: {e}")))?;

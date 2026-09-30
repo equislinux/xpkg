@@ -234,21 +234,68 @@ xpkg repo-add <DB> <PACKAGE> [OPTIONS]
 | `DB` | Path to the repository database file (e.g. `myrepo.db.tar.zst`) |
 | `PACKAGE` | Path to the `.xp` package to add |
 
-| Flag | Description |
-|------|-------------|
-| `--sign` | Sign the database after modification |
+| Flag | Value | Description |
+|------|-------|-------------|
+| `--sign` | — | Sign the database (and the history index) after modification |
+| `--keep` | `N` | Keep at most `N` versions per package; `0` (default) disables pruning |
 
 **Examples:**
 
 ```bash
 xpkg repo-add myrepo.db.tar.zst hello-2.12-1-x86_64.xp
 xpkg repo-add myrepo.db.tar.zst hello-2.12-1-x86_64.xp --sign
+xpkg repo-add myrepo.db.tar.zst hello-2.12-2-x86_64.xp --keep 3
 ```
 
 The database is created automatically if it does not exist. Supported formats:
 `.db.tar.zst`, `.db.tar.gz`, `.db.tar.xz`.
 
+**History index:** next to the database, `repo-add` maintains `history.json`
+(schema 1) with every version available for each package (`version`,
+`filename`, `sha256`, `builddate`, optional `sig` and `source` provenance).
+Re-adding a version updates its entry instead of duplicating it. When a
+signing key is configured (`sign_key`), or `--sign` is passed, the index is
+signed as `history.json.sig`; otherwise an existing stale signature is
+removed with a warning.
+
+**Retention:** with `--keep N`, the `N` newest versions per package (by
+`builddate`) and the `.xp`/`.sig` files of the version exposed by the
+database are preserved; older files listed in `history.json` are deleted.
+Files not present in the history index are never touched.
+
 See [Repository Management](REPOSITORY.md) for hosting instructions.
+
+---
+
+### `repo-prune` — Prune Old Package Versions
+
+Apply the version retention policy to an existing repository directory and
+rewrite `history.json` accordingly.
+
+```bash
+xpkg repo-prune <DB> [OPTIONS]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `DB` | Path to the repository database file (e.g. `myrepo.db.tar.zst`) |
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `--keep` | `N` | Keep the `N` newest versions per package; `0` (default) keeps only the current one |
+| `--dry-run` | — | Report what would be removed without deleting or rewriting anything |
+
+**Examples:**
+
+```bash
+xpkg repo-prune myrepo.db.tar.zst --keep 3           # Keep the last 3 versions
+xpkg repo-prune myrepo.db.tar.zst --keep 3 --dry-run # Preview the sweep
+xpkg repo-prune myrepo.db.tar.zst                    # Keep only the current version
+```
+
+The version exposed by the database is never deleted, even if it falls
+outside the retention window. If `history.json` is missing, it is seeded from
+the database entries whose files exist in the repository directory.
 
 ---
 

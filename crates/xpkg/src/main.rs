@@ -58,6 +58,7 @@ fn main() -> Result<()> {
         Command::Verify(args) => cmd_verify(args),
         Command::RepoAdd(args) => cmd_repo_add(&config, args),
         Command::RepoRemove(args) => cmd_repo_remove(args),
+        Command::RepoPrune(args) => cmd_repo_prune(&config, args),
     }
 }
 
@@ -408,13 +409,7 @@ fn cmd_verify(args: &cli::VerifyArgs) -> Result<()> {
     use xpkg_core::signing::{load_cert, load_keyring, verify_file, VerifyOutcome};
 
     let package_path = &args.package;
-    let sig_path = package_path.with_extension(format!(
-        "{}.sig",
-        package_path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-    ));
+    let sig_path = sig_path_for(package_path);
 
     if !sig_path.exists() {
         anyhow::bail!("signature file not found: {}", sig_path.display());
@@ -451,7 +446,10 @@ fn cmd_verify(args: &cli::VerifyArgs) -> Result<()> {
 }
 
 fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
-    use xpkg_core::repo::{add_entry, entry_from_package, read_db, write_db};
+    use xpkg_core::repo::{
+        add_entry, entry_from_package, history_entry_from_package, history_path, prune_repo,
+        read_db, read_history, upsert_history_entry, write_db, write_history,
+    };
 
     let db_path = &args.db;
     let package_path = &args.package;
@@ -477,11 +475,48 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
 
     let pkg_display = format!("{}-{}", entry.name, entry.full_version());
 
+    // ── Update the history index ────────────────────────────────────
+    let repo_dir = db_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let hist_path = history_path(db_path);
+
+    let mut history = read_history(&hist_path, repo_name)
+        .with_context(|| format!("failed to read {}", hist_path.display()))?;
+    if history.arch.is_empty() {
+        history.arch = entry.arch.clone();
+    }
+
+    let history_entry = history_entry_from_package(package_path, &entry, repo_dir)
+        .with_context(|| "failed to extract package provenance")?;
+    upsert_history_entry(&mut history, &entry.name, history_entry);
+
     add_entry(&mut db, entry);
     write_db(&db).with_context(|| "failed to write repository database")?;
 
+    // ── Version retention (optional) ────────────────────────────────
+    if args.keep > 0 {
+        let report = prune_repo(&db, &mut history, repo_dir, args.keep, false)
+            .with_context(|| "failed to prune old package versions")?;
+
+        for file in &report.deleted_files {
+            println!("    Removed {}", file.display());
+        }
+        if report.is_empty() {
+            println!("    Retention: nothing to prune (keep {})", args.keep);
+        }
+    }
+
+    write_history(&hist_path, &history)
+        .with_context(|| format!("failed to write {}", hist_path.display()))?;
+
     println!("==> Added {pkg_display} to {}", db_path.display());
     println!("    Repository now contains {} package(s)", db.len());
+    println!(
+        "    History: {} ({} version(s) tracked)",
+        hist_path.display(),
+        history.total_versions()
+    );
 
     // ── Sign database (optional) ────────────────────────────────────
     if args.sign {
@@ -503,6 +538,93 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
             sig.key_id
         );
     }
+
+    // ── Sign history index (optional) ───────────────────────────────
+    sign_history(config, &hist_path, args.sign)?;
+
+    Ok(())
+}
+
+fn cmd_repo_prune(config: &XpkgConfig, args: &cli::RepoPruneArgs) -> Result<()> {
+    use xpkg_core::repo::{
+        history_path, prune_repo, read_db, read_history, seed_history_from_db, write_history,
+    };
+
+    let db_path = &args.db;
+
+    tracing::info!(
+        db = %db_path.display(),
+        keep = args.keep,
+        dry_run = args.dry_run,
+        "pruning repository versions"
+    );
+
+    let repo_name = db_path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .and_then(|f| f.split('.').next())
+        .unwrap_or("repo");
+
+    let repo_dir = db_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let hist_path = history_path(db_path);
+
+    let db = read_db(db_path, repo_name).with_context(|| "failed to read repository database")?;
+
+    let mut history = read_history(&hist_path, repo_name)
+        .with_context(|| format!("failed to read {}", hist_path.display()))?;
+    if history.arch.is_empty() {
+        history.arch = db
+            .entries
+            .values()
+            .next()
+            .map(|e| e.arch.clone())
+            .unwrap_or_default();
+    }
+
+    let seeded = seed_history_from_db(&mut history, &db, repo_dir);
+    if seeded > 0 {
+        tracing::info!(seeded, "indexed existing versions into history");
+    }
+
+    let report = prune_repo(&db, &mut history, repo_dir, args.keep, args.dry_run)
+        .with_context(|| "failed to prune old package versions")?;
+
+    if args.dry_run {
+        println!(
+            "==> Dry run: {} version(s) would be removed from {}",
+            report.removed.len(),
+            db_path.display()
+        );
+        for version in &report.removed {
+            println!(
+                "    Would remove {} ({})",
+                version.filename, version.version
+            );
+        }
+        println!("    {} version(s) would be kept", report.kept);
+        return Ok(());
+    }
+
+    write_history(&hist_path, &history)
+        .with_context(|| format!("failed to write {}", hist_path.display()))?;
+
+    println!(
+        "==> Pruned {} version(s) from {}",
+        report.removed.len(),
+        db_path.display()
+    );
+    for version in &report.removed {
+        println!("    Removed {} ({})", version.filename, version.version);
+    }
+    println!(
+        "    {} version(s) kept; history: {}",
+        report.kept,
+        hist_path.display()
+    );
+
+    sign_history(config, &hist_path, false)?;
 
     Ok(())
 }
@@ -535,5 +657,69 @@ fn cmd_repo_remove(args: &cli::RepoRemoveArgs) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// ── Signing helpers ─────────────────────────────────────────────────────────
+
+/// Path of the detached signature for a file (`<file>.sig`).
+fn sig_path_for(path: &std::path::Path) -> std::path::PathBuf {
+    path.with_extension(format!(
+        "{}.sig",
+        path.extension().unwrap_or_default().to_string_lossy()
+    ))
+}
+
+/// Sign `history.json` when a signing key is available.
+///
+/// Signing happens when `--sign` was passed or when `sign_key` is configured.
+/// Without a secret key a signature cannot be produced; in that case an
+/// existing (now stale) `history.json.sig` is removed with a warning, since
+/// the index content has changed and the old signature no longer verifies.
+fn sign_history(config: &XpkgConfig, hist_path: &std::path::Path, explicit: bool) -> Result<()> {
+    use xpkg_core::signing::{load_secret_key, sign_file};
+
+    let key_path = std::path::PathBuf::from(&config.options.sign_key);
+    if key_path.as_os_str().is_empty() {
+        if explicit {
+            anyhow::bail!("--sign requires a signing key; set sign_key in xpkg.conf");
+        }
+        remove_stale_signature(hist_path)?;
+        return Ok(());
+    }
+
+    match load_secret_key(&key_path) {
+        Ok(secret_key) => {
+            let sig = sign_file(hist_path, &secret_key, false)
+                .with_context(|| "failed to sign history index")?;
+            println!(
+                "    History signed: {} (key {})",
+                sig.sig_path.display(),
+                sig.key_id
+            );
+        }
+        Err(e) if explicit => {
+            return Err(e).with_context(|| "failed to load signing key");
+        }
+        Err(e) => {
+            eprintln!("warning: could not sign {}: {e}", hist_path.display());
+            remove_stale_signature(hist_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn remove_stale_signature(hist_path: &std::path::Path) -> Result<()> {
+    let sig_path = sig_path_for(hist_path);
+    if sig_path.exists() {
+        std::fs::remove_file(&sig_path)
+            .with_context(|| format!("failed to remove stale signature {}", sig_path.display()))?;
+        eprintln!(
+            "warning: {} changed without a signing key; removed stale {}",
+            hist_path.display(),
+            sig_path.display()
+        );
+    }
     Ok(())
 }

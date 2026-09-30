@@ -11,7 +11,7 @@ provenance fields a generation manifest needs to be meaningful.
 
 ### 1. Version retention in repositories
 
-- `xpkg repo-add --keep N` (default: keep the last N versions, e.g. 3):
+- `xpkg repo-add --keep N` (implemented default: `0`, i.e. no pruning):
   retain package files **and** their database entries for the last N versions
   of each package. Today `repo-add` upserts by name, so the database only
   exposes the newest version even if old files remain on disk.
@@ -65,18 +65,61 @@ Extend the xpkg↔xpm integration test: build with `xpkg` → publish with a
 retention-enabled repo → install with `xpm` → downgrade one package from
 `history.json` → confirm a generation manifest captured both states.
 
+## Implementation status
+
+### Phase 1 — `--keep N` retention + `repo-prune` (done)
+
+- `xpkg repo-add --keep N` prunes after adding: at most `N` versions per
+  package survive (newest first by `builddate`), and the version exposed by
+  the database is **never** deleted. `--keep 0` (default) disables pruning.
+- `xpkg repo-prune --keep N [--dry-run]` applies the same policy to an
+  existing repository and rewrites `history.json`; `--dry-run` only reports
+  what would be removed.
+- Retention only considers files listed in `history.json`. Files that are not
+  indexed (or whose entries have no file on disk) are never touched, so
+  running prune against a repository without history is safe.
+- The repository database keeps exposing only the newest version: the
+  candidate list for old versions lives in `history.json`. Keeping multiple
+  versions in the database itself remains out of scope.
+
+### Phase 2 — `history.json` + signature (done, with caveats)
+
+- `repo-add` maintains `<repo-dir>/history.json` (schema 1) idempotently:
+  re-adding a version updates its entry instead of duplicating it.
+- Each entry records `version` (`version-release`), `filename`, the
+  `.xp` `sha256`, `builddate` (epoch), the `.sig` name when present, and a
+  `source` object when provenance data is available. Today `source` is filled
+  from the extended `.BUILDINFO` fields if they exist
+  (`x:source_url`/`x:source_sha256`/`x:source_commit`, phase 3), falling back
+  to the `.PKGINFO` `url`; when there is no data the field is omitted.
+- `history.json.sig` is produced when a secret key is available
+  (`sign_key` in `xpkg.conf`, or `repo-add --sign`). If the index changes and
+  no key is configured, an existing `history.json.sig` is removed with a
+  warning because it no longer verifies.
+- Pending: signing cannot be derived from the package `.sig` alone (a
+  detached signature does not expose the secret key), so a repository that
+  signs packages but has no `sign_key` configured on the publishing machine
+  gets an unsigned `history.json`. External signing (or configuring
+  `sign_key`) is required in that case.
+- Pending: `deploy_repo` (library helper) does not copy history-referenced
+  versions yet; publishing flows that use it must keep old `.xp` files in the
+  deployed layout themselves.
+
+### Phase 3 — `.BUILDINFO` provenance + lint rule (pending)
+
+`history.json` already reads the extended keys opportunistically, but the
+builder does not emit `x:source_commit`, `x:recipe_sha256` or
+`x:tool_version` yet, and the "no checksum and no pinned commit" lint rule is
+not implemented.
+
+### Phase 4 — `SOURCE_DATE_EPOCH` support (pending)
+
+### Phase 5 — end-to-end integration with xpm (pending, #56)
+
 ## Non-goals
 
 - xpkg does not know about generations, snapshots or boot entries; it only
   guarantees that old versions stay retrievable and that builds are traceable.
-
-## Suggested phases
-
-1. `--keep N` retention + `repo-prune`.
-2. `history.json` + signature.
-3. `.BUILDINFO` provenance + lint rule.
-4. `SOURCE_DATE_EPOCH` support.
-5. Integration test with xpm (#56).
 
 See also: `../scripts/docs/en/generations.md` (generations engine),
 `../xpm/docs/GENERATIONS.md` (consumer plan).
