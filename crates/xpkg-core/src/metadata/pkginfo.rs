@@ -10,6 +10,7 @@ use std::path::Path;
 
 use crate::error::XpkgResult;
 use crate::recipe::Recipe;
+use crate::repro;
 
 /// Generate the `.PKGINFO` file content from a recipe and the populated PKGDIR.
 pub fn generate_pkginfo(recipe: &Recipe, pkgdir: &Path) -> XpkgResult<String> {
@@ -32,7 +33,7 @@ pub fn generate_pkginfo(recipe: &Recipe, pkgdir: &Path) -> XpkgResult<String> {
         out.push_str(&format!("url = {url}\n"));
     }
 
-    out.push_str(&format!("builddate = {}\n", current_timestamp()));
+    out.push_str(&format!("builddate = {}\n", repro::build_timestamp()));
     out.push_str(&format!("size = {size}\n"));
 
     for arch in &pkg.arch {
@@ -96,14 +97,6 @@ fn walk_size(dir: &Path) -> u64 {
         }
     }
     total
-}
-
-/// Current Unix timestamp in seconds.
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

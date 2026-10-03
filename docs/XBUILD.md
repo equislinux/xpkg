@@ -95,13 +95,37 @@ optdepends = ["gettext: NLS support"]
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `urls` | `String[]` | Source URLs to download. Supports `http://`, `https://`, `ftp://`, `file://`. Variables like `${version}` are **not** expanded by the parser. |
+| `urls` | `String[]` | Source URLs to download. Supports `http://`, `https://`, `ftp://`, `file://` and Git sources (`git://`, `git+https://`, `git+http://`, or any URL ending in `.git`). Variables like `${version}` are **not** expanded by the parser. |
 | `sha256sums` | `String[]` | SHA-256 checksums — one per URL in order. Use `"SKIP"` to bypass a check. |
 | `sha512sums` | `String[]` | SHA-512 checksums — one per URL in order. Use `"SKIP"` to bypass. |
 | `patches` | `String[]` | Patch files to apply during the `prepare()` phase |
 
 When both `sha256sums` and `sha512sums` are provided, both are verified.
 The number of checksum entries must match the number of source URLs.
+
+### Pinned Git Sources
+
+A Git URL may pin the revision with a fragment, following the makepkg
+convention:
+
+| Fragment | Meaning |
+|----------|---------|
+| `#commit=<sha>` | Exact commit to check out |
+| `#tag=<tag>` | Tag to clone (immutable once published) |
+| `#branch=<branch>` | Branch to clone (can move; recorded but not pinned) |
+
+```toml
+[source]
+urls = [
+    "git+https://github.com/user/tool.git#tag=v1.0",
+]
+```
+
+Pinned sources are recorded in the package `.BUILDINFO` as
+`x:source_commit` (the exact resolved commit). A source with neither a
+checksum nor a pinned commit/tag triggers the `source-unpinned` lint
+warning during `xpkg build`. See [Sources](SOURCES.md) for resolution
+details and [Linting](LINTING.md) for the rule.
 
 **Example:**
 
@@ -231,6 +255,24 @@ make DESTDIR=$PKGDIR install
 
 ---
 
+## Reproducibility
+
+When the `SOURCE_DATE_EPOCH` environment variable is set to a Unix
+timestamp, xpkg uses it for the `builddate` of `.PKGINFO` and `.BUILDINFO`
+and for the mtime of every tar entry. Without it, the current time is used.
+This makes metadata timestamps stable across machines; it is groundwork for
+reproducible builds, not a full guarantee.
+
+```bash
+SOURCE_DATE_EPOCH=1700000000 xpkg build
+```
+
+The extended provenance fields (`x:recipe_sha256`, `x:source_commit`,
+`x:tool_version`) are appended to `.BUILDINFO` and ignored by readers that
+do not know them.
+
+---
+
 ## Validation Rules
 
 The XBUILD parser applies the following checks:
@@ -239,7 +281,8 @@ The XBUILD parser applies the following checks:
 2. `version` must be non-empty
 3. `release` must be ≥ 1
 4. `arch` values must be one of: `x86_64`, `aarch64`, `i686`, `armv7h`, `any`
-5. Source URL schemes must be `http`, `https`, `ftp`, or `file`
+5. Source URL schemes must be `http`, `https`, `ftp`, `file`, `git`,
+   `git+https`, or `git+http`
 6. If `sha256sums` is provided, its length must equal `urls` length
 7. If `sha512sums` is provided, its length must equal `urls` length
 

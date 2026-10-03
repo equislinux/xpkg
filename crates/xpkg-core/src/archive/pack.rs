@@ -12,8 +12,9 @@ use tar::Builder;
 
 use crate::config::{CompressMethod, XpkgConfig};
 use crate::error::{XpkgError, XpkgResult};
-use crate::metadata;
+use crate::metadata::{self, BuildProvenance};
 use crate::recipe::Recipe;
+use crate::repro;
 
 /// Output of a successful package creation.
 #[derive(Debug)]
@@ -34,11 +35,15 @@ pub struct PackageOutput {
 /// 3. Rewrites tar headers to uid=0, gid=0
 ///
 /// The output filename follows the pattern: `{name}-{version}-{release}-{arch}.xp`
+///
+/// `provenance` supplies the extended `.BUILDINFO` fields; pass
+/// [`BuildProvenance::default`] to omit them.
 pub fn create_package(
     config: &XpkgConfig,
     recipe: &Recipe,
     pkgdir: &Path,
     outdir: &Path,
+    provenance: &BuildProvenance,
 ) -> XpkgResult<PackageOutput> {
     let pkg = &recipe.package;
     let arch = pkg.arch.first().map(|s| s.as_str()).unwrap_or("any");
@@ -60,7 +65,7 @@ pub fn create_package(
 
     // ── Generate metadata ───────────────────────────────────────────
     let pkginfo = metadata::generate_pkginfo(recipe, pkgdir)?;
-    let buildinfo = metadata::generate_buildinfo(recipe, config);
+    let buildinfo = metadata::generate_buildinfo(recipe, config, provenance);
     let mtree = metadata::generate_mtree(pkgdir)?;
 
     // ── Create compressed archive ───────────────────────────────────
@@ -192,7 +197,7 @@ fn append_bytes<W: Write>(tar: &mut Builder<W>, name: &str, data: &[u8]) -> Xpkg
     header.set_mode(0o644);
     header.set_uid(0);
     header.set_gid(0);
-    header.set_mtime(current_timestamp());
+    header.set_mtime(repro::build_timestamp());
     header
         .set_username("root")
         .map_err(|e| XpkgError::Archive(format!("failed to set username: {e}")))?;
@@ -234,7 +239,7 @@ fn append_dir_all<W: Write>(tar: &mut Builder<W>, pkgdir: &Path) -> XpkgResult<(
             header.set_size(0);
             header.set_uid(0);
             header.set_gid(0);
-            header.set_mtime(current_timestamp());
+            header.set_mtime(repro::build_timestamp());
             let _ = header.set_username("root");
             let _ = header.set_groupname("root");
             header.set_cksum();
@@ -259,7 +264,7 @@ fn append_dir_all<W: Write>(tar: &mut Builder<W>, pkgdir: &Path) -> XpkgResult<(
             header.set_mode(0o755);
             header.set_uid(0);
             header.set_gid(0);
-            header.set_mtime(current_timestamp());
+            header.set_mtime(repro::build_timestamp());
             let _ = header.set_username("root");
             let _ = header.set_groupname("root");
             header.set_cksum();
@@ -287,7 +292,7 @@ fn append_dir_all<W: Write>(tar: &mut Builder<W>, pkgdir: &Path) -> XpkgResult<(
             header.set_mode(0o644);
             header.set_uid(0);
             header.set_gid(0);
-            header.set_mtime(current_timestamp());
+            header.set_mtime(repro::build_timestamp());
             let _ = header.set_username("root");
             let _ = header.set_groupname("root");
             header.set_path(rel_path).map_err(|e| {
@@ -365,13 +370,6 @@ fn collect_paths_recursive(
     Ok(())
 }
 
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,7 +425,14 @@ mod tests {
         let outdir = tmp.path().join("out");
 
         let config = XpkgConfig::default();
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
 
         assert!(result.archive_path.exists());
         assert_eq!(result.filename, "test-pkg-1.0.0-1-x86_64.xp");
@@ -441,7 +446,14 @@ mod tests {
         let outdir = tmp.path().join("out");
 
         let config = XpkgConfig::default();
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
 
         // Decompress and read the archive.
         let file = File::open(&result.archive_path).unwrap();
@@ -467,7 +479,14 @@ mod tests {
         let outdir = tmp.path().join("out");
 
         let config = XpkgConfig::default();
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
 
         let file = File::open(&result.archive_path).unwrap();
         let decoder = zstd::Decoder::new(file).unwrap();
@@ -493,7 +512,14 @@ mod tests {
         let outdir = tmp.path().join("out");
 
         let config = XpkgConfig::default();
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
 
         let file = File::open(&result.archive_path).unwrap();
         let decoder = zstd::Decoder::new(file).unwrap();
@@ -531,7 +557,14 @@ mod tests {
         }
 
         let config = XpkgConfig::default();
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
 
         let file = File::open(&result.archive_path).unwrap();
         let decoder = zstd::Decoder::new(file).unwrap();
@@ -570,7 +603,14 @@ mod tests {
         config.options.compress = CompressMethod::Gzip;
         config.options.compress_level = 6;
 
-        let result = create_package(&config, &test_recipe(), &pkgdir, &outdir).unwrap();
+        let result = create_package(
+            &config,
+            &test_recipe(),
+            &pkgdir,
+            &outdir,
+            &BuildProvenance::default(),
+        )
+        .unwrap();
         assert!(result.archive_path.exists());
         assert!(result.archive_size > 0);
 

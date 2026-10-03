@@ -14,6 +14,10 @@ xpkg lint mypackage-1.0-1-x86_64.xp
 xpkg lint mypackage-1.0-1-x86_64.xp --strict   # Treat warnings as errors
 ```
 
+Most rules operate on a built package archive. The source checks run on the
+recipe instead, before a package exists, and are reported as warnings at the
+start of `xpkg build` (they never stop the build).
+
 ---
 
 ## Severity Levels
@@ -103,6 +107,32 @@ unexpected locations.
 
 ---
 
+## Source Checks (recipe-level)
+
+| Rule ID | Severity | Description |
+|---------|----------|-------------|
+| `source-unpinned` | Warning | Source has no checksum and no pinned Git commit/tag |
+
+A source is considered verifiable when a `sha256sums` or `sha512sums` entry
+exists at its index (a literal `"SKIP"` does not count) or when it is a Git
+URL pinned to a commit or tag:
+
+```toml
+[source]
+urls = [
+    "https://example.com/foo-1.0.tar.gz",        # needs a checksum
+    "git+https://example.com/repo.git#tag=v1.0", # pinned by tag
+    "git+https://example.com/repo.git#branch=main", # warning: branch can move
+]
+sha256sums = ["...", "SKIP", "SKIP"]
+```
+
+These checks run at the start of `xpkg build`; they are not part of
+`xpkg lint <package>` because a built `.xp` no longer carries source
+declarations.
+
+---
+
 ## Output Formats
 
 ### Human-readable (default)
@@ -144,4 +174,5 @@ Summary: 1 error, 1 warning, 1 info
 | Metadata | 5 | 2 | 3 | 0 |
 | Dependencies | 1 | 0 | 0 | 1 |
 | ELF | 2 | 0 | 2 | 0 |
-| **Total** | **15** | **4** | **9** | **2** |
+| Sources (recipe-level) | 1 | 0 | 1 | 0 |
+| **Total** | **16** | **4** | **10** | **2** |

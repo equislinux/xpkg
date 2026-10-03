@@ -62,6 +62,9 @@ pub enum Command {
 
     /// Remove a package from a repository database.
     RepoRemove(RepoRemoveArgs),
+
+    /// Prune old package versions from a repository directory.
+    RepoPrune(RepoPruneArgs),
 }
 
 // ── Subcommand arguments ────────────────────────────────────────────────────
@@ -161,6 +164,25 @@ pub struct RepoAddArgs {
     /// Sign the database after modification.
     #[arg(long)]
     pub sign: bool,
+
+    /// Keep the N newest versions per package; 0 disables pruning.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub keep: usize,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct RepoPruneArgs {
+    /// Path to the repository database.
+    #[arg(required = true)]
+    pub db: PathBuf,
+
+    /// Keep the N newest versions per package; 0 keeps only the current one.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub keep: usize,
+
+    /// Show what would be removed without touching the repository.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -173,7 +195,7 @@ pub struct RepoRemoveArgs {
     #[arg(required = true)]
     pub pkgname: String,
 
-    /// Sign the database after modification.
+    /// Sign the database and history index after modification.
     #[arg(long)]
     pub sign: bool,
 }

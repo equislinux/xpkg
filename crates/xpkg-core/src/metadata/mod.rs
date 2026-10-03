@@ -13,8 +13,10 @@ mod buildinfo;
 mod install;
 mod mtree;
 mod pkginfo;
+mod provenance;
 
 pub use buildinfo::generate_buildinfo;
 pub use install::{generate_install, InstallScripts};
 pub use mtree::generate_mtree;
 pub use pkginfo::generate_pkginfo;
+pub use provenance::BuildProvenance;

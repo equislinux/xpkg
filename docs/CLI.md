@@ -52,11 +52,13 @@ xpkg build -d /tmp/mybuild -o ./pkgs  # Custom build and output dirs
 **Build pipeline steps:**
 
 1. Parse and validate the recipe
-2. Apply CLI overrides (builddir, outdir)
-3. Run the build pipeline (prepare → build → check → package)
-4. Strip ELF binaries (if `strip_binaries = true` in config)
-5. Create `.xp` archive (tar.zst by default)
-6. Sign the package (if `--sign` or `sign = true` in config)
+2. Lint the recipe sources (`source-unpinned` warnings are reported, never fatal)
+3. Apply CLI overrides (builddir, outdir)
+4. Run the build pipeline (prepare → build → check → package)
+5. Strip ELF binaries (if `strip_binaries = true` in config)
+6. Create `.xp` archive with extended `.BUILDINFO` provenance
+   (`x:recipe_sha256`, `x:source_commit`, `x:tool_version`)
+7. Sign the package (if `--sign` or `sign = true` in config)
 
 ---
 
@@ -91,6 +93,9 @@ xpkg lint hello-2.12-1-x86_64.xp --strict # Fail on any warning
 - Metadata checks — `.PKGINFO` completeness and correctness
 - Dependency checks — ELF dependencies vs declared depends
 - ELF analysis — RPATH, TEXTREL, stack protector
+
+Recipe-level source checks (`source-unpinned`) run at the start of
+`xpkg build`, not on a built archive.
 
 See [Linting Rules](LINTING.md) for the complete list.
 
@@ -234,27 +239,77 @@ xpkg repo-add <DB> <PACKAGE> [OPTIONS]
 | `DB` | Path to the repository database file (e.g. `myrepo.db.tar.zst`) |
 | `PACKAGE` | Path to the `.xp` package to add |
 
-| Flag | Description |
-|------|-------------|
-| `--sign` | Sign the database after modification |
+| Flag | Value | Description |
+|------|-------|-------------|
+| `--sign` | — | Sign the database (and the history index) after modification |
+| `--keep` | `N` | Keep at most `N` versions per package; `0` (default) disables pruning |
 
 **Examples:**
 
 ```bash
 xpkg repo-add myrepo.db.tar.zst hello-2.12-1-x86_64.xp
 xpkg repo-add myrepo.db.tar.zst hello-2.12-1-x86_64.xp --sign
+xpkg repo-add myrepo.db.tar.zst hello-2.12-2-x86_64.xp --keep 3
 ```
 
 The database is created automatically if it does not exist. Supported formats:
 `.db.tar.zst`, `.db.tar.gz`, `.db.tar.xz`.
 
+**History index:** next to the database, `repo-add` maintains `history.json`
+(schema 1) with every version available for each package (`version`,
+`filename`, `sha256`, `builddate`, optional `sig` and `source` provenance).
+Re-adding a version updates its entry instead of duplicating it. When a
+signing key is configured (`sign_key`), or `--sign` is passed, the index is
+signed as `history.json.sig`; otherwise an existing stale signature is
+removed with a warning.
+
+**Retention:** with `--keep N`, the `N` newest versions per package (by
+`builddate`) and the `.xp`/`.sig` files of the version exposed by the
+database are preserved; older files listed in `history.json` are deleted.
+Files not present in the history index are never touched.
+
 See [Repository Management](REPOSITORY.md) for hosting instructions.
+
+---
+
+### `repo-prune` — Prune Old Package Versions
+
+Apply the version retention policy to an existing repository directory and
+rewrite `history.json` accordingly.
+
+```bash
+xpkg repo-prune <DB> [OPTIONS]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `DB` | Path to the repository database file (e.g. `myrepo.db.tar.zst`) |
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `--keep` | `N` | Keep the `N` newest versions per package; `0` (default) keeps only the current one |
+| `--dry-run` | — | Report what would be removed without deleting or rewriting anything |
+
+**Examples:**
+
+```bash
+xpkg repo-prune myrepo.db.tar.zst --keep 3           # Keep the last 3 versions
+xpkg repo-prune myrepo.db.tar.zst --keep 3 --dry-run # Preview the sweep
+xpkg repo-prune myrepo.db.tar.zst                    # Keep only the current version
+```
+
+The version exposed by the database is never deleted, even if it falls
+outside the retention window. If `history.json` is missing, it is seeded from
+the database entries whose files exist in the repository directory.
 
 ---
 
 ### `repo-remove` — Remove Package from Repository
 
-Remove a package entry from a repository database by name.
+Remove a package entry from a repository database by name. When a
+`history.json` index exists next to the database it is kept in sync: versions
+whose package file is gone and packages no longer listed in the database are
+dropped (an old `history.json.sig` is removed if it cannot be regenerated).
 
 ```bash
 xpkg repo-remove <DB> <PKGNAME> [OPTIONS]
@@ -293,6 +348,7 @@ xpkg repo-remove myrepo.db.tar.zst hello --sign
 | Variable | Description |
 |----------|-------------|
 | `RUST_LOG` | Override tracing log level filter (e.g. `RUST_LOG=debug`) |
+| `SOURCE_DATE_EPOCH` | Unix timestamp used for metadata `builddate` and tar entry mtimes |
 
 During builds, these variables are set in the build environment:
 

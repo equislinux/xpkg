@@ -14,7 +14,9 @@ pub use cache::SourceCache;
 pub use checksum::{compute_sha256, compute_sha512, verify_checksum, ChecksumAlgo};
 pub use download::{download_file, filename_from_url, DownloadOptions};
 pub use extract::{detect_format, extract_archive, ArchiveFormat};
-pub use git::{git_checkout, git_clone, is_git_url};
+pub use git::{
+    git_checkout, git_clone, git_head_commit, git_ls_remote_commit, is_git_url, GitRef, GitRefKind,
+};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -70,7 +72,16 @@ impl SourceManager {
             // ── Git sources ─────────────────────────────────────────
             if is_git_url(url) {
                 let dest = srcdir.join(git_dir_name(url));
-                git_clone(url, &dest, None)?;
+                match GitRef::parse(url) {
+                    // An exact commit cannot be passed to `git clone --branch`;
+                    // clone the repository and check it out afterwards.
+                    Some(reference) if reference.kind == GitRefKind::Commit => {
+                        git_clone(url, &dest, None)?;
+                        git_checkout(&dest, &reference.value)?;
+                    }
+                    Some(reference) => git_clone(url, &dest, Some(&reference.value))?,
+                    None => git_clone(url, &dest, None)?,
+                }
                 results.push(dest);
                 continue;
             }
@@ -113,10 +124,11 @@ impl SourceManager {
 }
 
 /// Derive a directory name from a git URL for the clone destination.
-fn git_dir_name(url: &str) -> String {
-    let clean = url
+pub(crate) fn git_dir_name(url: &str) -> String {
+    let clean = url.split('#').next().unwrap_or(url);
+    let clean = clean
         .strip_prefix("git+")
-        .unwrap_or(url)
+        .unwrap_or(clean)
         .trim_end_matches('/')
         .trim_end_matches(".git");
 
@@ -148,5 +160,13 @@ mod tests {
     #[test]
     fn test_git_dir_name_trailing_slash() {
         assert_eq!(git_dir_name("https://github.com/user/tool.git/"), "tool");
+    }
+
+    #[test]
+    fn test_git_dir_name_ignores_fragment() {
+        assert_eq!(
+            git_dir_name("git+https://github.com/user/tool.git#tag=v1.0"),
+            "tool"
+        );
     }
 }
