@@ -110,7 +110,7 @@ Next step: Phase 4 (build engine — prepare/build/check/package pipeline).
 
 - [x] Implement xpkg verify subcommand — validate .xp package integrity and signatures (#54)
 - [x] Implement xpkg info subcommand — display metadata from a .xp archive without installing (#55)
-- [ ] Integration tests with xpm — build packages with xpkg and install with xpm end-to-end (#56)
+- [x] Integration tests with xpm — build packages with xpkg and install with xpm end-to-end (#56)
 - [ ] Run comparative benchmarks vs makepkg — build time, package size, and compression performance (#57)
 - [x] Complete test suite — unit, integration, and edge-case coverage (#58)
 - [x] Audit error handling — corrupt sources, disk full, interrupted builds, missing dependencies (#59)
