@@ -298,6 +298,19 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
     );
     assert!(h.db.join("sync/x.db").is_file());
 
+    // Search matches name/description case-insensitively in the sync db.
+    let search = h.xpm(&["search", "E2E-HELLO"]);
+    assert_success(&search, "xpm search");
+    let search_out = stdout(&search);
+    assert!(
+        search_out.contains("x/e2e-hello 1.0-1"),
+        "sync search missed the package:\n{search_out}"
+    );
+    assert!(
+        search_out.contains("xlnux xpkg<->xpm E2E fixture"),
+        "sync search did not print the description:\n{search_out}"
+    );
+
     // ── 4. xpm install into the isolated root ───────────────────────────
     let install = h.xpm(&["install", PKG]);
     assert_success(&install, "xpm install");
@@ -360,6 +373,14 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
     let info = h.xpm(&["info", "--local", PKG]);
     assert_success(&info, "xpm info");
     assert!(stdout(&info).contains("Version         : 1.0-1"));
+
+    let local_search = h.xpm(&["search", "--local", "e2e-hello"]);
+    assert_success(&local_search, "xpm search --local");
+    assert!(
+        stdout(&local_search).contains("local/e2e-hello 1.0-1"),
+        "local search missed the installed package:\n{}",
+        stdout(&local_search)
+    );
 
     // ── 6. Rebuild v2, republish and upgrade ────────────────────────────
     let v2 = h.build_package("2.0", "e2e-hello-v2");
