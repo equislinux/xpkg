@@ -13,8 +13,9 @@ use super::BuildProvenance;
 /// Generate the `.BUILDINFO` file content.
 ///
 /// The historical `key = value` format is preserved; extended provenance
-/// fields (`x:source_commit`, `x:recipe_sha256`, `x:tool_version`) are
-/// appended at the end and ignored by readers that do not know them.
+/// fields (`x:source_commit`, `x:source_url`, `x:source_sha256`,
+/// `x:recipe_sha256`, `x:tool_version`) are appended at the end and ignored by
+/// readers that do not know them.
 pub fn generate_buildinfo(
     recipe: &Recipe,
     config: &XpkgConfig,
@@ -68,6 +69,17 @@ pub fn generate_buildinfo(
     // Extended provenance (backward compatible: unknown keys are ignored).
     if let Some(commit) = &provenance.source_commit {
         out.push_str(&format!("x:source_commit = {commit}\n"));
+    }
+    // Source provenance straight from the recipe: first URL and its pinned
+    // checksum, so history.json can record downgrade provenance without
+    // re-reading the recipe. "SKIP" checksums are not provenance.
+    if let Some(url) = recipe.source.urls.first() {
+        out.push_str(&format!("x:source_url = {url}\n"));
+    }
+    if let Some(sum) = recipe.source.sha256sums.first() {
+        if sum != "SKIP" {
+            out.push_str(&format!("x:source_sha256 = {sum}\n"));
+        }
     }
     if let Some(sha256) = &provenance.recipe_sha256 {
         out.push_str(&format!("x:recipe_sha256 = {sha256}\n"));
@@ -161,6 +173,30 @@ mod tests {
         assert!(info.contains("x:source_commit = deadbeef\n"));
         assert!(info.contains("x:recipe_sha256 = abc123\n"));
         assert!(info.contains(&format!("x:tool_version = {}\n", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn test_buildinfo_records_recipe_source_url_and_checksum() {
+        let mut recipe = test_recipe();
+        recipe.source.urls = vec!["https://example.com/pkg-1.0.tar.gz".into()];
+        recipe.source.sha256sums = vec!["cafe1234".into()];
+
+        let info = generate_buildinfo(&recipe, &XpkgConfig::default(), &BuildProvenance::default());
+
+        assert!(info.contains("x:source_url = https://example.com/pkg-1.0.tar.gz\n"));
+        assert!(info.contains("x:source_sha256 = cafe1234\n"));
+    }
+
+    #[test]
+    fn test_buildinfo_skips_skip_checksums() {
+        let mut recipe = test_recipe();
+        recipe.source.urls = vec!["git+https://example.com/repo.git#commit=deadbeef".into()];
+        recipe.source.sha256sums = vec!["SKIP".into()];
+
+        let info = generate_buildinfo(&recipe, &XpkgConfig::default(), &BuildProvenance::default());
+
+        assert!(info.contains("x:source_url = git+https://example.com/repo.git#commit=deadbeef\n"));
+        assert!(!info.contains("x:source_sha256"));
     }
 
     #[test]
