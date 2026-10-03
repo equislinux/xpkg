@@ -157,8 +157,8 @@ impl Harness {
             fs::create_dir_all(dir).expect("create dir");
         }
 
-        // Local file repository named `x` (x-repo layout: `$arch` dir with
-        // `x.db` + `x.db.tar.gz`). Signature checks are disabled for the test.
+        // Local file repository named `x` (x-repo layout: `$arch` dir with a
+        // zstd `x.db`). Signature checks are disabled for the test.
         let repo_base = self.repo_dir.parent().expect("repo base dir");
         let config = format!(
             "[options]\narchitecture = \"x86_64\"\nsig_level = \"never\"\ncolor = false\n\n\
@@ -237,19 +237,17 @@ impl Harness {
         archive
     }
 
-    /// Add the package to the local repo DB and mirror the x-repo layout:
-    /// `x.db.tar.gz` is the real archive, `x.db` the alias xpm downloads.
+    /// Add the package to the local repo DB: xpkg writes a zstd-compressed
+    /// `x.db`, which xpm downloads and parses natively.
     fn publish(&self, archive: &Path) {
-        let db_gz = self.repo_dir.join("x.db.tar.gz");
+        let db = self.repo_dir.join("x.db");
         let output = self.xpkg(&[
             "repo-add",
-            db_gz.to_str().expect("utf-8 db path"),
+            db.to_str().expect("utf-8 db path"),
             archive.to_str().expect("utf-8 archive path"),
         ]);
         assert_success(&output, "xpkg repo-add");
         assert!(stdout(&output).contains("Repository now contains 1 package(s)"));
-
-        fs::copy(&db_gz, self.repo_dir.join("x.db")).expect("mirror x.db alias");
     }
 
     fn local_db_file(&self, file: &str) -> PathBuf {
@@ -274,8 +272,12 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
 
     // ── 2. xpkg repo-add publishes it to the local file repository ──────
     h.publish(&v1);
-    assert!(h.repo_dir.join("x.db").is_file());
-    assert!(h.repo_dir.join("x.db.tar.gz").is_file());
+    let db_bytes = fs::read(h.repo_dir.join("x.db")).expect("read published x.db");
+    assert_eq!(
+        db_bytes.get(..4),
+        Some(&[0x28, 0xb5, 0x2f, 0xfd][..]),
+        "xpkg should publish a zstd-compressed database"
+    );
     assert!(h.repo_dir.join("history.json").is_file());
     let history: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(h.repo_dir.join("history.json")).unwrap())
