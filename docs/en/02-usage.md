@@ -165,6 +165,8 @@ xpkg repo-remove myrepo.db.tar.zst hello --sign
 ```
 
 Adding an existing package name replaces the entry with the new version.
+Removing also syncs `history.json` when present (stale versions and packages no
+longer in the database are dropped).
 See [Repository Management](../REPOSITORY.md) for hosting instructions.
 
 ## Exit codes

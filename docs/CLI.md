@@ -306,7 +306,10 @@ the database entries whose files exist in the repository directory.
 
 ### `repo-remove` — Remove Package from Repository
 
-Remove a package entry from a repository database by name.
+Remove a package entry from a repository database by name. When a
+`history.json` index exists next to the database it is kept in sync: versions
+whose package file is gone and packages no longer listed in the database are
+dropped (an old `history.json.sig` is removed if it cannot be regenerated).
 
 ```bash
 xpkg repo-remove <DB> <PKGNAME> [OPTIONS]

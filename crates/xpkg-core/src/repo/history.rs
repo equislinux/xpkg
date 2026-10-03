@@ -236,6 +236,32 @@ pub fn seed_history_from_db(history: &mut RepoHistory, db: &RepoDb, repo_dir: &P
     added
 }
 
+/// Drop history versions whose package file no longer exists and packages the
+/// database no longer lists.
+///
+/// Called after `repo-remove` so `history.json` never points at files the
+/// repository does not serve anymore (that would break downgrade resolution in
+/// consumers such as `xpm`). Returns the number of versions removed.
+pub fn sync_history_with_db(history: &mut RepoHistory, db: &RepoDb, repo_dir: &Path) -> usize {
+    let mut removed = 0;
+
+    let names: Vec<String> = history.packages.keys().cloned().collect();
+    for name in names {
+        if let Some(versions) = history.packages.get_mut(&name) {
+            let before = versions.len();
+            versions.retain(|v| repo_dir.join(&v.filename).exists());
+            removed += before - versions.len();
+        }
+
+        let empty = history.packages.get(&name).is_some_and(|v| v.is_empty());
+        if empty || !db.entries.contains_key(&name) {
+            history.packages.remove(&name);
+        }
+    }
+
+    removed
+}
+
 // ── Package inspection ──────────────────────────────────────────────────────
 
 /// Build a [`HistoryEntry`] from an `.xp` package and its database entry.
@@ -559,6 +585,30 @@ mod tests {
         let entry = history_entry_from_package(&pkg_path, &repo_entry, tmp.path()).unwrap();
 
         assert!(entry.source.is_none());
+    }
+
+    #[test]
+    fn test_sync_history_drops_missing_files_and_removed_packages() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let mut db = RepoDb::new("xrepo", tmp.path().join("xrepo.db.tar.zst"));
+        crate::repo::db::add_entry(&mut db, make_entry("hello", "1.0", "1", 1000));
+        crate::repo::db::add_entry(&mut db, make_entry("hello", "1.1", "1", 2000));
+
+        std::fs::write(tmp.path().join("pkg-1.1-1-x86_64.xp"), b"x").unwrap();
+        std::fs::write(tmp.path().join("pkg-2.0-1-x86_64.xp"), b"x").unwrap();
+
+        let mut history = RepoHistory::new("xrepo", "x86_64");
+        upsert_history_entry(&mut history, "hello", history_entry("1.0-1", 1000));
+        upsert_history_entry(&mut history, "hello", history_entry("1.1-1", 2000));
+        upsert_history_entry(&mut history, "gone", history_entry("2.0-1", 3000));
+
+        let removed = sync_history_with_db(&mut history, &db, tmp.path());
+
+        assert_eq!(removed, 1);
+        assert_eq!(history.packages["hello"].len(), 1);
+        assert_eq!(history.packages["hello"][0].version, "1.1-1");
+        assert!(!history.packages.contains_key("gone"));
     }
 
     #[test]

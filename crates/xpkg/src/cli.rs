@@ -195,7 +195,7 @@ pub struct RepoRemoveArgs {
     #[arg(required = true)]
     pub pkgname: String,
 
-    /// Sign the database after modification.
+    /// Sign the database and history index after modification.
     #[arg(long)]
     pub sign: bool,
 }

@@ -25,8 +25,8 @@ pub use db::{add_entry, read_db, remove_entry, write_db};
 pub use deploy::{deploy_repo, DeployResult};
 pub use history::{
     history_entry_from_package, history_path, read_history, seed_history_from_db,
-    upsert_history_entry, write_history, HistoryEntry, RepoHistory, SourceInfo, HISTORY_FILENAME,
-    HISTORY_SCHEMA,
+    sync_history_with_db, upsert_history_entry, write_history, HistoryEntry, RepoHistory,
+    SourceInfo, HISTORY_FILENAME, HISTORY_SCHEMA,
 };
 pub use inspect::{entry_from_package, list_package_files, read_buildinfo, read_pkginfo};
 pub use retention::{prune_repo, PruneReport, PrunedVersion};

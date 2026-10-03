@@ -57,7 +57,7 @@ fn main() -> Result<()> {
         Command::Info(args) => cmd_info(args),
         Command::Verify(args) => cmd_verify(args),
         Command::RepoAdd(args) => cmd_repo_add(&config, args),
-        Command::RepoRemove(args) => cmd_repo_remove(args),
+        Command::RepoRemove(args) => cmd_repo_remove(&config, args),
         Command::RepoPrune(args) => cmd_repo_prune(&config, args),
     }
 }
@@ -649,8 +649,11 @@ fn cmd_repo_prune(config: &XpkgConfig, args: &cli::RepoPruneArgs) -> Result<()> 
     Ok(())
 }
 
-fn cmd_repo_remove(args: &cli::RepoRemoveArgs) -> Result<()> {
-    use xpkg_core::repo::{read_db, remove_entry, write_db};
+fn cmd_repo_remove(config: &XpkgConfig, args: &cli::RepoRemoveArgs) -> Result<()> {
+    use xpkg_core::repo::{
+        history_path, read_db, read_history, remove_entry, sync_history_with_db, write_db,
+        write_history,
+    };
 
     let db_path = &args.db;
     let pkgname = &args.pkgname;
@@ -671,6 +674,28 @@ fn cmd_repo_remove(args: &cli::RepoRemoveArgs) -> Result<()> {
             write_db(&db).with_context(|| "failed to write repository database")?;
             println!("==> Removed {pkgname} from {}", db_path.display());
             println!("    Repository now contains {} package(s)", db.len());
+
+            // Keep history.json coherent: drop versions whose file is gone and
+            // packages the database no longer lists (otherwise consumers would
+            // try to resolve downgrades to unserved artifacts).
+            let hist_path = history_path(db_path);
+            if hist_path.exists() {
+                let repo_dir = db_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                let mut history = read_history(&hist_path, repo_name)
+                    .with_context(|| format!("failed to read {}", hist_path.display()))?;
+                let removed = sync_history_with_db(&mut history, &db, repo_dir);
+                write_history(&hist_path, &history)
+                    .with_context(|| format!("failed to write {}", hist_path.display()))?;
+                if removed > 0 {
+                    println!(
+                        "    {removed} stale version(s) dropped from {}",
+                        hist_path.display()
+                    );
+                }
+                sign_history(config, &hist_path, args.sign)?;
+            }
         }
         None => {
             anyhow::bail!("package '{pkgname}' not found in {}", db_path.display());
