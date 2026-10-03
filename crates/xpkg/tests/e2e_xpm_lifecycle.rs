@@ -432,4 +432,23 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
         "installing an unknown package should fail:\n{}",
         stdout(&missing)
     );
+
+    // ── 9. Orphans: a dependency nothing requires is reported ───────────
+    let as_dep = h.xpm(&["install", "--as-deps", PKG]);
+    assert_success(&as_dep, "xpm install --as-deps");
+
+    let orphans = h.xpm(&["query", "--orphans"]);
+    assert_success(&orphans, "xpm query --orphans");
+    assert_eq!(
+        stdout(&orphans),
+        format!("{PKG} 2.0-1\n"),
+        "a dependency package with no explicit requirer should be an orphan"
+    );
+
+    // Marking it explicit clears the orphan status.
+    let as_explicit = h.xpm(&["install", "--as-explicit", PKG]);
+    assert_success(&as_explicit, "xpm install --as-explicit");
+    let orphans = h.xpm(&["query", "--orphans"]);
+    assert_success(&orphans, "xpm query --orphans after explicit");
+    assert_eq!(stdout(&orphans), "");
 }
