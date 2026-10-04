@@ -17,6 +17,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::{XpkgError, XpkgResult};
+use crate::repo::history::{history_path, read_history};
 use crate::repo::types::RepoDb;
 
 /// Deploy the repository database and copy referenced packages into `outdir`.
@@ -25,6 +26,9 @@ use crate::repo::types::RepoDb;
 /// - Creates a convenience symlink `<repo>.db` → `<repo>.db.tar.<ext>`.
 /// - For each entry in the database, copies the corresponding `.xp` file from
 ///   `packages_dir` into `outdir` (if it exists and is not already there).
+/// - When a `history.json` index exists next to the database, the older
+///   versions it references are copied too, so downgrades published in the
+///   index remain downloadable after deployment.
 pub fn deploy_repo(db: &RepoDb, packages_dir: &Path, outdir: &Path) -> XpkgResult<DeployResult> {
     fs::create_dir_all(outdir).map_err(|e| {
         XpkgError::Io(std::io::Error::new(
@@ -80,6 +84,43 @@ pub fn deploy_repo(db: &RepoDb, packages_dir: &Path, outdir: &Path) -> XpkgResul
             if sig_src.exists() {
                 let sig_dst = outdir.join(format!("{}.sig", entry.filename));
                 let _ = fs::copy(&sig_src, &sig_dst);
+            }
+        }
+    }
+
+    // ── Copy history-referenced versions (downgrade candidates) ─────
+    // The database only lists the newest version per package; the history
+    // index may reference older artifacts that consumers can still install.
+    let hist_path = history_path(&db.db_path);
+    if hist_path.exists() {
+        if let Ok(history) = read_history(&hist_path, &db.name) {
+            for versions in history.packages.values() {
+                for version in versions {
+                    if version.filename.is_empty() {
+                        continue;
+                    }
+                    let dst = outdir.join(&version.filename);
+                    if dst.exists() {
+                        continue;
+                    }
+                    let src = packages_dir.join(&version.filename);
+                    if !src.exists() {
+                        continue;
+                    }
+                    fs::copy(&src, &dst).map_err(|e| {
+                        XpkgError::Io(std::io::Error::new(
+                            e.kind(),
+                            format!("copy {}: {e}", version.filename),
+                        ))
+                    })?;
+                    copied += 1;
+
+                    let sig_src = packages_dir.join(format!("{}.sig", version.filename));
+                    if sig_src.exists() {
+                        let _ =
+                            fs::copy(&sig_src, outdir.join(format!("{}.sig", version.filename)));
+                    }
+                }
             }
         }
     }
@@ -153,6 +194,47 @@ mod tests {
         assert_eq!(result.packages_copied, 2);
         assert!(out.join("foo-1.0.0-1-x86_64.xp").exists());
         assert!(out.join("bar-1.0.0-1-x86_64.xp").exists());
+    }
+
+    #[test]
+    fn test_deploy_copies_history_referenced_versions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("xrepo.db.tar.zst");
+
+        let mut db = RepoDb::new("xrepo", db_path.clone());
+        add_entry(&mut db, make_entry("foo"));
+        write_db(&db).unwrap();
+
+        let pkg_dir = tmp.path().join("packages");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        fs::write(pkg_dir.join("foo-1.0.0-1-x86_64.xp"), b"fake").unwrap();
+        fs::write(pkg_dir.join("foo-0.9.0-1-x86_64.xp"), b"old").unwrap();
+
+        let mut history = crate::repo::history::RepoHistory::new("xrepo", "x86_64");
+        crate::repo::history::upsert_history_entry(
+            &mut history,
+            "foo",
+            crate::repo::history::HistoryEntry {
+                version: "0.9.0-1".into(),
+                filename: "foo-0.9.0-1-x86_64.xp".into(),
+                sha256: "old".into(),
+                sig: None,
+                builddate: 1,
+                source: None,
+            },
+        );
+        crate::repo::history::write_history(
+            &crate::repo::history::history_path(&db_path),
+            &history,
+        )
+        .unwrap();
+
+        let out = tmp.path().join("deploy");
+        let result = deploy_repo(&db, &pkg_dir, &out).unwrap();
+
+        assert_eq!(result.packages_copied, 2);
+        assert!(out.join("foo-1.0.0-1-x86_64.xp").exists());
+        assert!(out.join("foo-0.9.0-1-x86_64.xp").exists());
     }
 
     #[cfg(unix)]
