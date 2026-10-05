@@ -48,6 +48,45 @@ package() {
 }
 "#;
 
+/// Dependency package for the resolver E2E (no dependencies itself).
+const DEP_RECIPE: &str = r#"pkgname=e2e-lib
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="xlnux resolver E2E dependency"
+arch=('x86_64')
+url="https://example.com/e2e-lib"
+license=('MIT')
+
+build() {
+  printf '#!/bin/sh\necho lib\n' > e2e-lib
+  chmod +x e2e-lib
+}
+
+package() {
+  install -Dm755 e2e-lib "$PKGDIR/usr/bin/e2e-lib"
+}
+"#;
+
+/// Dependent package for the resolver E2E (`depends=('e2e-lib')`).
+const APP_RECIPE: &str = r#"pkgname=e2e-app
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="xlnux resolver E2E dependent"
+arch=('x86_64')
+url="https://example.com/e2e-app"
+license=('MIT')
+depends=('e2e-lib')
+
+build() {
+  printf '#!/bin/sh\ne2e-lib\n' > e2e-app
+  chmod +x e2e-app
+}
+
+package() {
+  install -Dm755 e2e-app "$PKGDIR/usr/bin/e2e-app"
+}
+"#;
+
 /// Locate the sibling `xpm` binary without ever invoking the network.
 fn find_xpm_binary() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("XPM_BIN") {
@@ -168,13 +207,6 @@ impl Harness {
         fs::write(&self.xpm_config, config).expect("write xpm config");
     }
 
-    fn write_recipe(&self, version: &str, marker: &str) {
-        let recipe = RECIPE
-            .replace("@VERSION@", version)
-            .replace("@MARKER@", marker);
-        fs::write(&self.recipe, recipe).expect("write PKGBUILD fixture");
-    }
-
     /// Run the real `xpkg` binary against the isolated (absent) config.
     fn xpkg(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_xpkg"))
@@ -206,7 +238,16 @@ impl Harness {
 
     /// Build `PKG` at `version` with the recipe fixture; returns the `.xp`.
     fn build_package(&self, version: &str, marker: &str) -> PathBuf {
-        self.write_recipe(version, marker);
+        let recipe = RECIPE
+            .replace("@VERSION@", version)
+            .replace("@MARKER@", marker);
+        self.build_recipe_body(&recipe, PKG, version)
+    }
+
+    /// Build an arbitrary PKGBUILD body (`@VERSION@` substituted).
+    fn build_recipe_body(&self, recipe_body: &str, name: &str, version: &str) -> PathBuf {
+        fs::write(&self.recipe, recipe_body.replace("@VERSION@", version))
+            .expect("write PKGBUILD fixture");
 
         let outdir = self.repo_dir.to_str().expect("utf-8 repo dir");
         let builddir = self.builddir.to_str().expect("utf-8 build dir");
@@ -224,11 +265,11 @@ impl Harness {
 
         let out = stdout(&output);
         assert!(
-            out.contains(&format!("==> Built {PKG}-{version}-1")),
+            out.contains(&format!("==> Built {name}-{version}-1")),
             "unexpected xpkg build output:\n{out}"
         );
 
-        let archive = self.repo_dir.join(format!("{PKG}-{version}-1-x86_64.xp"));
+        let archive = self.repo_dir.join(format!("{name}-{version}-1-x86_64.xp"));
         assert!(
             archive.is_file(),
             "missing built package {}",
@@ -240,6 +281,10 @@ impl Harness {
     /// Add the package to the local repo DB: xpkg writes a zstd-compressed
     /// `x.db`, which xpm downloads and parses natively.
     fn publish(&self, archive: &Path) {
+        self.publish_expect(archive, 1);
+    }
+
+    fn publish_expect(&self, archive: &Path, expected: usize) {
         let db = self.repo_dir.join("x.db");
         let output = self.xpkg(&[
             "repo-add",
@@ -247,7 +292,11 @@ impl Harness {
             archive.to_str().expect("utf-8 archive path"),
         ]);
         assert_success(&output, "xpkg repo-add");
-        assert!(stdout(&output).contains("Repository now contains 1 package(s)"));
+        assert!(
+            stdout(&output).contains(&format!("Repository now contains {expected} package(s)")),
+            "unexpected repo-add output:\n{}",
+            stdout(&output)
+        );
     }
 
     fn local_db_file(&self, file: &str) -> PathBuf {
@@ -451,4 +500,55 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
     let orphans = h.xpm(&["query", "--orphans"]);
     assert_success(&orphans, "xpm query --orphans after explicit");
     assert_eq!(stdout(&orphans), "");
+}
+
+#[test]
+fn xpm_resolves_dependency_closure_end_to_end() {
+    let Some(xpm) = find_xpm_binary() else {
+        eprintln!(
+            "skipping resolver E2E: xpm binary not found; \
+             set XPM_BIN or build the sibling checkout (cargo build -p xpm)"
+        );
+        return;
+    };
+
+    let h = Harness::new(xpm);
+
+    let lib = h.build_recipe_body(DEP_RECIPE, "e2e-lib", "1.0");
+    h.publish_expect(&lib, 1);
+    let app = h.build_recipe_body(APP_RECIPE, "e2e-app", "1.0");
+    h.publish_expect(&app, 2);
+
+    let sync = h.xpm(&["sync"]);
+    assert_success(&sync, "xpm sync");
+
+    let install = h.xpm(&["install", "e2e-app"]);
+    assert_success(&install, "xpm install");
+    let out = stdout(&install);
+    assert!(
+        out.contains("Resolved 2 package(s)"),
+        "plan summary:\n{out}"
+    );
+    assert!(
+        out.contains("1 explicit, 1 as dependencies"),
+        "plan summary:\n{out}"
+    );
+    assert!(out.contains("2 package(s) installed successfully"), "{out}");
+
+    // Dependencies are downloaded before the requested package.
+    let lib_pos = out.find("e2e-lib-1.0-1").expect("lib download line");
+    let app_pos = out.find("e2e-app-1.0-1").expect("app download line");
+    assert!(
+        lib_pos < app_pos,
+        "dependency must be installed first:\n{out}"
+    );
+
+    assert!(h.root.join("usr/bin/e2e-lib").is_file());
+    assert!(h.root.join("usr/bin/e2e-app").is_file());
+
+    let reason = |name: &str| {
+        fs::read_to_string(h.db.join("local").join(name).join("reason")).unwrap_or_default()
+    };
+    assert_eq!(reason("e2e-app").trim(), "explicit");
+    assert_eq!(reason("e2e-lib").trim(), "dep");
 }
