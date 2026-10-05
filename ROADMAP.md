@@ -10,8 +10,9 @@ engine, `.PKGINFO`/`.BUILDINFO`/`.MTREE` generation, signing, linting, ALPM
 repo DBs with retention, `history.json` with provenance and
 `SOURCE_DATE_EPOCH` reproducibility. Test suite: ~260 `#[test]` across unit
 and integration tests (including the xpkg↔xpm lifecycle), clippy/fmt clean.
-Remaining: benchmarks vs makepkg (#57), the Phase 10 post-v1.0 items, and the
-`.files` database generation for xpm consumers. xpkg is **not** the active
+`repo-add`/`repo-remove` also maintain the ALPM `.files` database.
+Remaining: benchmarks vs makepkg (#57) and the Phase 10 post-v1.0 items.
+xpkg is **not** the active
 builder of `[x]` yet: `x-repo/build-packages.sh` still uses PKGBUILD +
 makepkg.
 

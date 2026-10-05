@@ -7,6 +7,7 @@
 //! - **types** — [`RepoDb`], [`RepoEntry`], [`DbCompression`]
 //! - **desc** — generate and parse `desc`/`depends` virtual files
 //! - **db** — read/write database archives, add/remove entries
+//! - **files** — read/write the ALPM `.files` database and its `%FILES%` entries
 //! - **inspect** — build a [`RepoEntry`] from a `.xp` package on disk
 //! - **history** — `history.json` version index and provenance
 //! - **retention** — prune old package versions from disk
@@ -15,6 +16,7 @@
 mod db;
 mod deploy;
 mod desc;
+mod files;
 mod history;
 mod inspect;
 mod retention;
@@ -23,6 +25,10 @@ mod types;
 // Re-export public API.
 pub use db::{add_entry, read_db, remove_entry, write_db};
 pub use deploy::{deploy_repo, DeployResult};
+pub use files::{
+    files_db_path, parse_files, read_files_db, render_files, sync_files_with_db,
+    upsert_files_entry, write_files_db, FILES_HEADER,
+};
 pub use history::{
     history_entry_from_package, history_path, read_history, seed_history_from_db,
     sync_history_with_db, upsert_history_entry, write_history, HistoryEntry, RepoHistory,

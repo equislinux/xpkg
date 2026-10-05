@@ -467,8 +467,9 @@ fn cmd_verify(args: &cli::VerifyArgs) -> Result<()> {
 
 fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
     use xpkg_core::repo::{
-        add_entry, entry_from_package, history_entry_from_package, history_path, prune_repo,
-        read_db, read_history, upsert_history_entry, write_db, write_history,
+        add_entry, entry_from_package, history_entry_from_package, history_path,
+        list_package_files, prune_repo, read_db, read_history, upsert_files_entry,
+        upsert_history_entry, write_db, write_history,
     };
 
     let db_path = &args.db;
@@ -494,6 +495,9 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
         .with_context(|| format!("failed to inspect {}", package_path.display()))?;
 
     let pkg_display = format!("{}-{}", entry.name, entry.full_version());
+    let dir_name = entry.dir_name();
+    let pkg_files = list_package_files(package_path)
+        .with_context(|| format!("failed to list files in {}", package_path.display()))?;
 
     // ── Update the history index ────────────────────────────────────
     let repo_dir = db_path
@@ -514,6 +518,10 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
     add_entry(&mut db, entry);
     write_db(&db).with_context(|| "failed to write repository database")?;
 
+    // Keep the ALPM files database in sync (`xpm files` and similar tools).
+    let files_path = upsert_files_entry(db_path, &dir_name, &pkg_files, &db)
+        .with_context(|| "failed to write files database")?;
+
     // ── Version retention (optional) ────────────────────────────────
     if args.keep > 0 {
         let report = prune_repo(&db, &mut history, repo_dir, args.keep, false)
@@ -532,6 +540,12 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
 
     println!("==> Added {pkg_display} to {}", db_path.display());
     println!("    Repository now contains {} package(s)", db.len());
+    println!(
+        "    Files database: {} ({} path(s) for {})",
+        files_path.display(),
+        pkg_files.len(),
+        dir_name
+    );
     println!(
         "    History: {} ({} version(s) tracked)",
         hist_path.display(),
@@ -562,12 +576,16 @@ fn cmd_repo_add(config: &XpkgConfig, args: &cli::RepoAddArgs) -> Result<()> {
     // ── Sign history index (optional) ───────────────────────────────
     sign_history(config, &hist_path, args.sign)?;
 
+    // ── Sign files database (optional) ──────────────────────────────
+    sign_artifact(config, &files_path, args.sign, "Files database")?;
+
     Ok(())
 }
 
 fn cmd_repo_prune(config: &XpkgConfig, args: &cli::RepoPruneArgs) -> Result<()> {
     use xpkg_core::repo::{
-        history_path, prune_repo, read_db, read_history, seed_history_from_db, write_history,
+        history_path, prune_repo, read_db, read_history, seed_history_from_db, sync_files_with_db,
+        write_history,
     };
 
     let db_path = &args.db;
@@ -644,6 +662,9 @@ fn cmd_repo_prune(config: &XpkgConfig, args: &cli::RepoPruneArgs) -> Result<()> 
         hist_path.display()
     );
 
+    // Old versions are gone from disk; drop their files-database entries.
+    let _ = sync_files_with_db(db_path, &db).with_context(|| "failed to update files database")?;
+
     sign_history(config, &hist_path, false)?;
 
     Ok(())
@@ -651,8 +672,8 @@ fn cmd_repo_prune(config: &XpkgConfig, args: &cli::RepoPruneArgs) -> Result<()> 
 
 fn cmd_repo_remove(config: &XpkgConfig, args: &cli::RepoRemoveArgs) -> Result<()> {
     use xpkg_core::repo::{
-        history_path, read_db, read_history, remove_entry, sync_history_with_db, write_db,
-        write_history,
+        history_path, read_db, read_history, remove_entry, sync_files_with_db,
+        sync_history_with_db, write_db, write_history,
     };
 
     let db_path = &args.db;
@@ -674,6 +695,13 @@ fn cmd_repo_remove(config: &XpkgConfig, args: &cli::RepoRemoveArgs) -> Result<()
             write_db(&db).with_context(|| "failed to write repository database")?;
             println!("==> Removed {pkgname} from {}", db_path.display());
             println!("    Repository now contains {} package(s)", db.len());
+
+            if let Some(files_path) = sync_files_with_db(db_path, &db)
+                .with_context(|| "failed to update files database")?
+            {
+                println!("    Files database: {} updated", files_path.display());
+                sign_artifact(config, &files_path, args.sign, "Files database")?;
+            }
 
             // Keep history.json coherent: drop versions whose file is gone and
             // packages the database no longer lists (otherwise consumers would
@@ -722,6 +750,21 @@ fn sig_path_for(path: &std::path::Path) -> std::path::PathBuf {
 /// existing (now stale) `history.json.sig` is removed with a warning, since
 /// the index content has changed and the old signature no longer verifies.
 fn sign_history(config: &XpkgConfig, hist_path: &std::path::Path, explicit: bool) -> Result<()> {
+    sign_artifact(config, hist_path, explicit, "History")
+}
+
+/// Sign an artifact when a signing key is available.
+///
+/// Signing happens when `explicit` is set or when `sign_key` is configured.
+/// Without a secret key a signature cannot be produced; in that case an
+/// existing (now stale) `.sig` is removed with a warning, since the content
+/// changed and the old signature no longer verifies.
+fn sign_artifact(
+    config: &XpkgConfig,
+    path: &std::path::Path,
+    explicit: bool,
+    label: &str,
+) -> Result<()> {
     use xpkg_core::signing::{load_secret_key, sign_file};
 
     let key_path = std::path::PathBuf::from(&config.options.sign_key);
@@ -729,16 +772,16 @@ fn sign_history(config: &XpkgConfig, hist_path: &std::path::Path, explicit: bool
         if explicit {
             anyhow::bail!("--sign requires a signing key; set sign_key in xpkg.conf");
         }
-        remove_stale_signature(hist_path)?;
+        remove_stale_signature(path)?;
         return Ok(());
     }
 
     match load_secret_key(&key_path) {
         Ok(secret_key) => {
-            let sig = sign_file(hist_path, &secret_key, false)
-                .with_context(|| "failed to sign history index")?;
+            let sig = sign_file(path, &secret_key, false)
+                .with_context(|| format!("failed to sign {label}"))?;
             println!(
-                "    History signed: {} (key {})",
+                "    {label} signed: {} (key {})",
                 sig.sig_path.display(),
                 sig.key_id
             );
@@ -747,8 +790,8 @@ fn sign_history(config: &XpkgConfig, hist_path: &std::path::Path, explicit: bool
             return Err(e).with_context(|| "failed to load signing key");
         }
         Err(e) => {
-            eprintln!("warning: could not sign {}: {e}", hist_path.display());
-            remove_stale_signature(hist_path)?;
+            eprintln!("warning: could not sign {}: {e}", path.display());
+            remove_stale_signature(path)?;
         }
     }
 

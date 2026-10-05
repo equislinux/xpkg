@@ -4,6 +4,7 @@
 //! directory, with an isolated (missing) config file so the developer's
 //! `~/.config/xpkg/xpkg.conf` is never read.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -47,6 +48,17 @@ fn make_package(path: &Path, name: &str, version: &str, release: &str, builddate
     header.set_mode(0o644);
     header.set_cksum();
     builder.append_data(&mut header, ".PKGINFO", data).unwrap();
+
+    // Payload file so the files database has something to record.
+    let payload = b"#!/bin/sh\nexit 0\n";
+    let mut header = tar::Header::new_gnu();
+    header.set_size(payload.len() as u64);
+    header.set_mode(0o755);
+    header.set_cksum();
+    builder
+        .append_data(&mut header, format!("usr/bin/{name}"), &payload[..])
+        .unwrap();
+
     let tar_bytes = builder.into_inner().unwrap();
 
     let compressed = zstd::encode_all(tar_bytes.as_slice(), 3).unwrap();
@@ -217,4 +229,60 @@ fn test_repo_prune_without_history_does_not_fail() {
     let history = read_history(&repo.dir);
     assert_eq!(history["packages"]["hello"].as_array().unwrap().len(), 1);
     assert!(repo.dir.join("hello-1.0-1-x86_64.xp").exists());
+}
+
+/// Decode a files database and return `<dir>` -> `files` content.
+fn read_files_db(path: &Path) -> std::collections::BTreeMap<String, String> {
+    let raw = std::fs::read(path).unwrap();
+    let tar_bytes = zstd::decode_all(raw.as_slice()).unwrap();
+    let mut archive = tar::Archive::new(tar_bytes.as_slice());
+    let mut entries = std::collections::BTreeMap::new();
+
+    for entry in archive.entries().unwrap() {
+        let mut entry = entry.unwrap();
+        let entry_path = entry.path().unwrap().to_string_lossy().to_string();
+        let Some(dir) = entry_path.strip_suffix("/files") else {
+            continue;
+        };
+        let mut content = String::new();
+        entry.read_to_string(&mut content).unwrap();
+        entries.insert(dir.to_string(), content);
+    }
+
+    entries
+}
+
+#[test]
+fn test_repo_add_writes_files_database() {
+    let repo = Repo::new();
+    repo.add("hello", "1.0", "1", 1000, 0);
+    repo.add("world", "2.0", "3", 2000, 0);
+
+    let files_db = repo.dir.join("xrepo.files.tar.zst");
+    assert!(files_db.exists());
+
+    let entries = read_files_db(&files_db);
+    assert_eq!(entries.len(), 2);
+
+    let hello = entries.get("hello-1.0-1").expect("hello entry");
+    assert!(hello.starts_with("%FILES%\n"));
+    assert!(hello.contains("usr/bin/hello\n"));
+
+    let world = entries.get("world-2.0-3").expect("world entry");
+    assert!(world.contains("usr/bin/world\n"));
+}
+
+#[test]
+fn test_repo_remove_drops_files_database_entry() {
+    let repo = Repo::new();
+    repo.add("hello", "1.0", "1", 1000, 0);
+    repo.add("world", "1.0", "1", 1000, 0);
+
+    let db = repo.db.to_str().unwrap().to_string();
+    let output = run(&repo.config, &["repo-remove", &db, "hello"]);
+    assert_success(&output);
+
+    let entries = read_files_db(&repo.dir.join("xrepo.files.tar.zst"));
+    assert_eq!(entries.len(), 1);
+    assert!(entries.contains_key("world-1.0-1"));
 }
