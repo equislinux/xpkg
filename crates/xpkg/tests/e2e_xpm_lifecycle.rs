@@ -87,6 +87,25 @@ package() {
 }
 "#;
 
+/// Standalone package used for the local-file install scenario.
+const LOCAL_RECIPE: &str = r#"pkgname=e2e-local
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="xpm local install fixture"
+arch=('x86_64')
+url="https://example.com/e2e-local"
+license=('MIT')
+
+build() {
+  printf '#!/bin/sh\necho local\n' > e2e-local
+  chmod +x e2e-local
+}
+
+package() {
+  install -Dm755 e2e-local "$PKGDIR/usr/bin/e2e-local"
+}
+"#;
+
 /// Locate the sibling `xpm` binary without ever invoking the network.
 fn find_xpm_binary() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("XPM_BIN") {
@@ -551,4 +570,56 @@ fn xpm_resolves_dependency_closure_end_to_end() {
     };
     assert_eq!(reason("e2e-app").trim(), "explicit");
     assert_eq!(reason("e2e-lib").trim(), "dep");
+}
+
+#[test]
+fn xpm_installs_local_file_and_upgrades_with_closure() {
+    let Some(xpm) = find_xpm_binary() else {
+        eprintln!(
+            "skipping resolver E2E: xpm binary not found; \
+             set XPM_BIN or build the sibling checkout (cargo build -p xpm)"
+        );
+        return;
+    };
+
+    let h = Harness::new(xpm);
+    let read_local = |name: &str, file: &str| {
+        fs::read_to_string(h.db.join("local").join(name).join(file)).unwrap_or_default()
+    };
+
+    // ── Local `.xp` install (no repository involved) ────────────────────
+    let local = h.build_recipe_body(LOCAL_RECIPE, "e2e-local", "1.0");
+    let install = h.xpm(&["install", local.to_str().expect("utf-8 path")]);
+    assert_success(&install, "xpm install <file>");
+    let out = stdout(&install);
+    assert!(out.contains("local: "), "local install output:\n{out}");
+    assert!(out.contains("1 package(s) installed successfully"), "{out}");
+    assert!(h.root.join("usr/bin/e2e-local").is_file());
+    assert_eq!(read_local("e2e-local", "version").trim(), "1.0-1");
+    assert_eq!(read_local("e2e-local", "origin").trim(), "local");
+    assert_eq!(read_local("e2e-local", "reason").trim(), "explicit");
+
+    // ── Repo install, then dependency-aware upgrade ─────────────────────
+    let lib = h.build_recipe_body(DEP_RECIPE, "e2e-lib", "1.0");
+    h.publish_expect(&lib, 1);
+    let app = h.build_recipe_body(APP_RECIPE, "e2e-app", "1.0");
+    h.publish_expect(&app, 2);
+    assert_success(&h.xpm(&["sync"]), "xpm sync");
+    assert_success(&h.xpm(&["install", "e2e-app"]), "xpm install e2e-app");
+    assert_eq!(read_local("e2e-lib", "reason").trim(), "dep");
+
+    // Publish newer versions for both packages and upgrade the system.
+    let lib2 = h.build_recipe_body(DEP_RECIPE, "e2e-lib", "2.0");
+    h.publish_expect(&lib2, 2);
+    let app2 = h.build_recipe_body(APP_RECIPE, "e2e-app", "2.0");
+    h.publish_expect(&app2, 2);
+
+    let upgrade = h.xpm(&["upgrade"]);
+    assert_success(&upgrade, "xpm upgrade");
+    let out = stdout(&upgrade);
+    assert!(out.contains("Packages to upgrade: 2"), "{out}");
+    assert_eq!(read_local("e2e-lib", "version").trim(), "2.0-1");
+    assert_eq!(read_local("e2e-app", "version").trim(), "2.0-1");
+    assert_eq!(read_local("e2e-lib", "reason").trim(), "dep");
+    assert_eq!(read_local("e2e-app", "reason").trim(), "explicit");
 }
