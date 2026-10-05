@@ -4,13 +4,17 @@
 
 ## Current Status
 
-Phases 0–3 complete — Cargo workspace scaffolded, CLI with 8 subcommands,
-TOML configuration parser, XBUILD/PKGBUILD parsers, recipe validation,
-srcinfo generator, `xpkg new`, HTTP downloader with retries, SHA-256/512
-checksum verification, archive extraction (tar.gz/xz/bz2/zst, zip), Git
-clone support, and source caching are all implemented and tested (72 unit
-tests passing). Documented in `docs/` (CLI, XBUILD, SOURCES).
-Next step: Phase 4 (build engine — prepare/build/check/package pipeline).
+Phases 0–9 complete — the CLI ships `build`, `lint`, `info`, `verify`, `new`,
+`srcinfo`, `repo-add`, `repo-remove` and `repo-prune`, including the build
+engine, `.PKGINFO`/`.BUILDINFO`/`.MTREE` generation, signing, linting, ALPM
+repo DBs with retention, `history.json` with provenance and
+`SOURCE_DATE_EPOCH` reproducibility. Test suite: ~260 `#[test]` across unit
+and integration tests (including the xpkg↔xpm lifecycle), clippy/fmt clean.
+`repo-add`/`repo-remove` also maintain the ALPM `.files` database.
+Remaining: benchmarks vs makepkg (#57) and the Phase 10 post-v1.0 items.
+xpkg is **not** the active
+builder of `[x]` yet: `x-repo/build-packages.sh` still uses PKGBUILD +
+makepkg.
 
 ---
 

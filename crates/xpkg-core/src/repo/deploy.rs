@@ -14,7 +14,7 @@
 //! can be served from GitHub Pages, Nginx, or any static file host.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{XpkgError, XpkgResult};
 use crate::repo::history::{history_path, read_history};
@@ -24,6 +24,9 @@ use crate::repo::types::RepoDb;
 ///
 /// - Writes (or overwrites) `<repo>.db.tar.<ext>` in `outdir`.
 /// - Creates a convenience symlink `<repo>.db` → `<repo>.db.tar.<ext>`.
+/// - Copies the ALPM files database (`<repo>.files.tar.<ext>` plus the
+///   `<repo>.files` symlink) when it exists next to the database.
+/// - Copies `.sig` files for the database and files database when present.
 /// - For each entry in the database, copies the corresponding `.xp` file from
 ///   `packages_dir` into `outdir` (if it exists and is not already there).
 /// - When a `history.json` index exists next to the database, the older
@@ -59,6 +62,54 @@ pub fn deploy_repo(db: &RepoDb, packages_dir: &Path, outdir: &Path) -> XpkgResul
                 format!("create symlink: {e}"),
             ))
         })?;
+    }
+
+    // ── Database signature ──────────────────────────────────────────
+    let db_sig_src = PathBuf::from(format!("{}.sig", db.db_path.display()));
+    if db_sig_src.exists() {
+        let db_sig_dest = outdir.join(format!("{}.sig", db_filename));
+        if db_sig_src != db_sig_dest {
+            fs::copy(&db_sig_src, &db_sig_dest).map_err(|e| {
+                XpkgError::Io(std::io::Error::new(e.kind(), format!("copy db sig: {e}")))
+            })?;
+        }
+    }
+
+    // ── Files database, symlink and signature (if generated) ────────
+    let files_src = crate::repo::files::files_db_path(&db.db_path);
+    if files_src.exists() {
+        let files_filename = format!("{}.files{}", db.name, db.compression.extension());
+        let files_dest = outdir.join(&files_filename);
+        if files_src != files_dest {
+            fs::copy(&files_src, &files_dest).map_err(|e| {
+                XpkgError::Io(std::io::Error::new(e.kind(), format!("copy files db: {e}")))
+            })?;
+        }
+
+        let files_link = outdir.join(format!("{}.files", db.name));
+        let _ = fs::remove_file(&files_link);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&files_filename, &files_link).map_err(|e| {
+                XpkgError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("create files symlink: {e}"),
+                ))
+            })?;
+        }
+
+        let files_sig_src = PathBuf::from(format!("{}.sig", files_src.display()));
+        if files_sig_src.exists() {
+            let files_sig_dest = outdir.join(format!("{}.sig", files_filename));
+            if files_sig_src != files_sig_dest {
+                fs::copy(&files_sig_src, &files_sig_dest).map_err(|e| {
+                    XpkgError::Io(std::io::Error::new(
+                        e.kind(),
+                        format!("copy files sig: {e}"),
+                    ))
+                })?;
+            }
+        }
     }
 
     // ── Copy package archives ───────────────────────────────────────
@@ -251,5 +302,34 @@ mod tests {
 
         let link = out.join("myrepo.db");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_deploy_copies_files_database_and_symlink() {
+        use crate::repo::files::{files_db_path, read_files_db, write_files_db};
+        use std::collections::BTreeMap;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("myrepo.db.tar.zst");
+
+        let mut db = RepoDb::new("myrepo", db_path.clone());
+        add_entry(&mut db, make_entry("foo"));
+        write_db(&db).unwrap();
+
+        let mut files = BTreeMap::new();
+        files.insert("foo-1.0.0-1".to_string(), vec!["usr/bin/foo".to_string()]);
+        write_files_db(&files_db_path(&db_path), &files).unwrap();
+
+        let out = tmp.path().join("out");
+        deploy_repo(&db, tmp.path(), &out).unwrap();
+
+        let files_dest = out.join("myrepo.files.tar.zst");
+        assert!(files_dest.exists());
+        let link = out.join("myrepo.files");
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+
+        let loaded = read_files_db(&files_dest).unwrap();
+        assert_eq!(loaded, files);
     }
 }

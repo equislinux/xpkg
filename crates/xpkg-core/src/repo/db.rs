@@ -98,7 +98,7 @@ fn pack_entries(entries: &BTreeMap<String, RepoEntry>) -> XpkgResult<Vec<u8>> {
         .map_err(|e| XpkgError::Archive(format!("finalize tar: {e}")))
 }
 
-fn append_virtual_file(
+pub(crate) fn append_virtual_file(
     builder: &mut tar::Builder<Vec<u8>>,
     path: &str,
     content: &str,
@@ -175,7 +175,7 @@ fn unpack_entries(tar_bytes: &[u8]) -> XpkgResult<BTreeMap<String, RepoEntry>> {
 
 // ── Compression helpers ─────────────────────────────────────────────────────
 
-fn compress(data: &[u8], compression: DbCompression) -> XpkgResult<Vec<u8>> {
+pub(crate) fn compress(data: &[u8], compression: DbCompression) -> XpkgResult<Vec<u8>> {
     match compression {
         DbCompression::Zstd => {
             zstd::encode_all(data, 3).map_err(|e| XpkgError::Archive(format!("zstd compress: {e}")))
@@ -202,7 +202,7 @@ fn compress(data: &[u8], compression: DbCompression) -> XpkgResult<Vec<u8>> {
     }
 }
 
-fn decompress(data: &[u8], compression: DbCompression) -> XpkgResult<Vec<u8>> {
+pub(crate) fn decompress(data: &[u8], compression: DbCompression) -> XpkgResult<Vec<u8>> {
     match compression {
         DbCompression::Zstd => {
             let mut decoder = zstd::Decoder::new(data)
