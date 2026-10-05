@@ -228,7 +228,9 @@ xpkg srcinfo > .SRCINFO          # Write output to .SRCINFO
 ### `repo-add` — Add Package to Repository
 
 Add a `.xp` package to a repository database. If the package already exists
-in the database, the entry is updated.
+in the database, the entry is updated. The ALPM files database
+(`<repo>.files.tar.<ext>`) is updated with the package's file list and kept
+next to the `.db` archive.
 
 ```bash
 xpkg repo-add <DB> <PACKAGE> [OPTIONS]
@@ -241,7 +243,7 @@ xpkg repo-add <DB> <PACKAGE> [OPTIONS]
 
 | Flag | Value | Description |
 |------|-------|-------------|
-| `--sign` | — | Sign the database (and the history index) after modification |
+| `--sign` | — | Sign the database, the files database and the history index after modification |
 | `--keep` | `N` | Keep at most `N` versions per package; `0` (default) disables pruning |
 
 **Examples:**
@@ -300,7 +302,8 @@ xpkg repo-prune myrepo.db.tar.zst                    # Keep only the current ver
 
 The version exposed by the database is never deleted, even if it falls
 outside the retention window. If `history.json` is missing, it is seeded from
-the database entries whose files exist in the repository directory.
+the database entries whose files exist in the repository directory. Stale
+entries in the files database are dropped in the same sweep.
 
 ---
 
@@ -310,6 +313,7 @@ Remove a package entry from a repository database by name. When a
 `history.json` index exists next to the database it is kept in sync: versions
 whose package file is gone and packages no longer listed in the database are
 dropped (an old `history.json.sig` is removed if it cannot be regenerated).
+The package is also dropped from the files database.
 
 ```bash
 xpkg repo-remove <DB> <PKGNAME> [OPTIONS]
@@ -322,7 +326,7 @@ xpkg repo-remove <DB> <PKGNAME> [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--sign` | Sign the database after modification |
+| `--sign` | Sign the database and the files database after modification |
 
 **Examples:**
 
