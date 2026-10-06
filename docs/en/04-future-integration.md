@@ -1,7 +1,7 @@
 # xpkg - Future Integration Notes
 
 Context and notes for when the xpkg Rust tooling is re-activated inside the
-xlnux *reboot*. This document is intentionally forward-looking and based on
+equislinux *reboot*. This document is intentionally forward-looking and based on
 `DECISIONS.md` and the workspace `ROADMAP.md` (both at the workspace root,
 outside this repo), plus the open items in this repository's own `ROADMAP.md`.
 

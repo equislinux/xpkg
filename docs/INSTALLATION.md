@@ -30,7 +30,7 @@ How to build and install xpkg from source.
 
 ```bash
 # Clone the repository
-git clone https://github.com/xlnux/xpkg.git
+git clone https://github.com/equislinux/xpkg.git
 cd xpkg
 
 # Build in release mode

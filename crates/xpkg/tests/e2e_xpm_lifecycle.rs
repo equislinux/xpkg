@@ -31,7 +31,7 @@ const PKG: &str = "e2e-hello";
 const RECIPE: &str = r#"pkgname=e2e-hello
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="xlnux xpkg<->xpm E2E fixture"
+pkgdesc="equislinux xpkg<->xpm E2E fixture"
 arch=('x86_64')
 url="https://example.com/e2e-hello"
 license=('MIT')
@@ -39,7 +39,7 @@ license=('MIT')
 build() {
   printf '#!/bin/sh\necho @MARKER@\n' > e2e-hello
   chmod +x e2e-hello
-  printf 'xlnux e2e fixture\n' > README
+  printf 'equislinux e2e fixture\n' > README
 }
 
 package() {
@@ -52,7 +52,7 @@ package() {
 const DEP_RECIPE: &str = r#"pkgname=e2e-lib
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="xlnux resolver E2E dependency"
+pkgdesc="equislinux resolver E2E dependency"
 arch=('x86_64')
 url="https://example.com/e2e-lib"
 license=('MIT')
@@ -71,7 +71,7 @@ package() {
 const APP_RECIPE: &str = r#"pkgname=e2e-app
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="xlnux resolver E2E dependent"
+pkgdesc="equislinux resolver E2E dependent"
 arch=('x86_64')
 url="https://example.com/e2e-app"
 license=('MIT')
@@ -118,7 +118,7 @@ fn find_xpm_binary() -> Option<PathBuf> {
         return Some(path);
     }
 
-    // `<workspace>/xpkg/crates/xpkg` → `<workspace>` (the xlnux checkout root).
+    // `<workspace>/xpkg/crates/xpkg` → `<workspace>` (the equislinux checkout root).
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut candidates = Vec::new();
     if let Some(workspace) = manifest_dir
@@ -375,7 +375,7 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
         "sync search missed the package:\n{search_out}"
     );
     assert!(
-        search_out.contains("xlnux xpkg<->xpm E2E fixture"),
+        search_out.contains("equislinux xpkg<->xpm E2E fixture"),
         "sync search did not print the description:\n{search_out}"
     );
 
@@ -397,7 +397,7 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
     assert_eq!(
         fs::read_to_string(h.root.join("usr/share/doc/e2e-hello/README"))
             .expect("installed README"),
-        "xlnux e2e fixture\n"
+        "equislinux e2e fixture\n"
     );
     assert!(h.root.join("var/log/xpm.log").is_file());
 

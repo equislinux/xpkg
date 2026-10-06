@@ -1,7 +1,7 @@
 # xpkg — Generation alignment: version retention and provenance
 
 Context: X Linux rolls the system back with **generations** (whole-root btrfs
-snapshots; `xlnux/scripts`, `docs/en/generations.md`). Generations cover the
+snapshots; `equislinux/scripts`, `docs/en/generations.md`). Generations cover the
 common case, but **partial downgrades** (one package, without reverting the
 system) need something the current repositories do not provide: old package
 versions still indexed and fetchable. This document proposes that, plus the
@@ -17,7 +17,7 @@ provenance fields a generation manifest needs to be meaningful.
   exposes the newest version even if old files remain on disk.
 - `xpkg repo-prune --keep N [--dry-run]`: sweep old `.xp`/`.sig` files and
   rebuild the database. Never deletes the current version or a pinned one.
-- The GitHub Pages layout consumed by `xlnux/x-repo` stays unchanged; retention
+- The GitHub Pages layout consumed by `equislinux/x-repo` stays unchanged; retention
   only adds old files next to the current ones.
 
 ### 2. History index

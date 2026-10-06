@@ -3,15 +3,15 @@
 <p align="center">
   <strong>Package builder for the X</strong><br>
   Build, lint, sign, and publish <code>.xp</code> packages — the developer companion to
-  <a href="https://github.com/xlnux/xpm">xpm</a>.
+  <a href="https://github.com/equislinux/xpm">xpm</a>.
 </p>
 
 <p align="center">
     <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg">
     <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=fff">
     <img alt="Platform" src="https://img.shields.io/badge/Platform-Linux-FCC624?logo=linux&logoColor=000">
-    <img alt="Version" src="https://img.shields.io/github/v/release/xlnux/xpkg?include_prereleases&label=version">
-    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/xlnux/xpkg/ci.yml?branch=main&label=CI&logo=github">
+    <img alt="Version" src="https://img.shields.io/github/v/release/equislinux/xpkg?include_prereleases&label=version">
+    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/equislinux/xpkg/ci.yml?branch=main&label=CI&logo=github">
 </p>
 
 ---
@@ -40,7 +40,7 @@ for installation with `xpm`. Think of it as the `makepkg` + `repo-add` +
 
 ```bash
 # 1. Install xpkg
-git clone https://github.com/xlnux/xpkg.git
+git clone https://github.com/equislinux/xpkg.git
 cd xpkg
 cargo build --release
 sudo install -Dm755 target/release/xpkg /usr/local/bin/xpkg
@@ -210,4 +210,4 @@ See [ROADMAP.md](ROADMAP.md) for the full development plan.
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
 
-- Documentation: https://github.com/xlnux/wiki
+- Documentation: https://github.com/equislinux/wiki

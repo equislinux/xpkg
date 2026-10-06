@@ -24,7 +24,7 @@ tools: `fakeroot` (preferred for rootless packaging, auto-detected) and
 `strip` (ELF stripping, from binutils).
 
 ```bash
-git clone https://github.com/xlnux/xpkg.git
+git clone https://github.com/equislinux/xpkg.git
 cd xpkg
 cargo build --release
 sudo install -Dm755 target/release/xpkg /usr/local/bin/xpkg

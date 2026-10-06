@@ -102,7 +102,7 @@ let result = deploy_repo(&db, &output_dir, &[package_path])?;
 
 ## Hosting on GitHub Pages
 
-1. Create a repository (e.g. `xlnux/xrepo`)
+1. Create a repository (e.g. `equislinux/xrepo`)
 2. Build your packages with xpkg
 3. Add them to a database:
 
@@ -124,7 +124,7 @@ cp ../../packages/*.xp .
 ```ini
 # /etc/xpm/xpm.conf or user config
 [xrepo]
-Server = https://xlnux.github.io/xrepo/x86_64
+Server = https://equislinux.github.io/xrepo/x86_64
 ```
 
 ---

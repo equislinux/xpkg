@@ -15,10 +15,10 @@ Execution date: 2026-03-17
 
 ## Repository URLs (updated owner)
 
-The project owner moved from the personal `xscriptor` account to the `xlnux` organization.
+The project owner moved from the personal `xscriptor` account to the `equislinux` organization.
 
-- New repository URL: `https://github.com/xlnux/x-repo`
-- Current GitHub Pages endpoint still used in tooling: `https://xlnux.github.io/x-repo`
+- New repository URL: `https://github.com/equislinux/x-repo`
+- Current GitHub Pages endpoint still used in tooling: `https://equislinux.github.io/x-repo`
 
 ## Repositories Used
 
@@ -293,4 +293,4 @@ Temporary execution files:
 - Current `xpm` implementation only syncs `.db`/`.files` mirrors. Package download/install flow is part of Phase 7.
 - To use metadata-only repos with package artifacts in external hosting (for example GitHub Releases), package fetch URL composition must be implemented in `xpm` install/fetch flow.
 - Full install/remove transaction testing in `xpm` still depends on Phase 7 implementation.
-- Before publishing upstream, update any remaining `xscriptor` links in docs/workflows to `xlnux` where applicable.
+- Before publishing upstream, update any remaining `xscriptor` links in docs/workflows to `equislinux` where applicable.

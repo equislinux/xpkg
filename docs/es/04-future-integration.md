@@ -1,7 +1,7 @@
 # xpkg - Notas de integración futura
 
 Contexto y notas para cuando el tooling Rust de xpkg se re-active dentro del
-*reboot* de xlnux. Este documento es deliberadamente prospectivo y se basa en
+*reboot* de equislinux. Este documento es deliberadamente prospectivo y se basa en
 `DECISIONS.md` y el `ROADMAP.md` del workspace (ambos en la raíz del
 workspace, fuera de este repo), más los ítems abiertos del `ROADMAP.md` propio
 de este repositorio.

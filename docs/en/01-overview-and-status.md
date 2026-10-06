@@ -2,7 +2,7 @@
 
 This is one of four documents describing `xpkg`, the Rust package builder of
 the X distribution. It covers what the tool is, its role in the X ecosystem,
-and its honest status within the xlnux *reboot* initiative.
+and its honest status within the equislinux *reboot* initiative.
 
 Related documents in this folder:
 
@@ -34,7 +34,7 @@ ecosystem, written entirely in Rust.
 | Source management | HTTP download with retries, SHA-256/512 verification, Git clone, local cache |
 
 Project metadata: version `0.1.0`, edition 2021, license
-GPL-3.0-or-later, org `xlnux`, repository `https://github.com/xlnux/xpkg`.
+GPL-3.0-or-later, org `equislinux`, repository `https://github.com/equislinux/xpkg`.
 
 ## Relationship with xpm
 
@@ -46,9 +46,9 @@ GPL-3.0-or-later, org `xlnux`, repository `https://github.com/xlnux/xpkg`.
 `xpkg` produces `.xp` packages that `xpm` installs. Both share the same
 package format and metadata structures but are independent binaries.
 
-## Status inside the xlnux reboot
+## Status inside the equislinux reboot
 
-The xlnux *reboot* initiative (see `ROADMAP.md` and `DECISIONS.md` at the
+The equislinux *reboot* initiative (see `ROADMAP.md` and `DECISIONS.md` at the
 workspace root, outside this repo) reorganised the organisation and set a new
 direction for the distribution. Its status for the Rust tooling is:
 

@@ -24,7 +24,7 @@ opcionales: `fakeroot` (método preferido para empaquetar sin root,
 auto-detectado) y `strip` (stripping de ELF, de binutils).
 
 ```bash
-git clone https://github.com/xlnux/xpkg.git
+git clone https://github.com/equislinux/xpkg.git
 cd xpkg
 cargo build --release
 sudo install -Dm755 target/release/xpkg /usr/local/bin/xpkg

@@ -21,7 +21,7 @@ Documentos relacionados en esta carpeta:
 | `crates/xpkg-core` | Librería | Toda la lógica de negocio; re-exporta `XpkgConfig`, `XpkgError`, `XpkgResult` desde su `lib.rs` |
 
 El `Cargo.toml` raíz del workspace centraliza dependencias y metadatos
-compartidos (versión `0.1.0`, edition 2021, GPL-3.0-or-later, org `xlnux`).
+compartidos (versión `0.1.0`, edition 2021, GPL-3.0-or-later, org `equislinux`).
 Dependencias de terceros destacadas: `clap` (CLI), `serde`/`serde_json`/`toml`,
 `thiserror`/`anyhow` (errores), `tracing` (logging), `ureq` (HTTP),
 `sha2` (checksums), `flate2`/`tar`/`xz2`/`bzip2`/`zstd`/`zip` (archivos),
