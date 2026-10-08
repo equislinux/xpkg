@@ -15,12 +15,22 @@ pub fn build_env(config: &XpkgConfig, ctx: &BuildContext) -> HashMap<String, Str
     let mut env = HashMap::new();
 
     // ── Directory paths (absolute) ──────────────────────────────────────
-    env.insert("PKGDIR".into(), ctx.pkgdir.display().to_string());
-    env.insert("SRCDIR".into(), ctx.srcdir.display().to_string());
-    env.insert("BUILDDIR".into(), ctx.build_root.display().to_string());
-    env.insert("startdir".into(), ctx.startdir.display().to_string());
+    // Both spellings: xpkg's historical uppercase names and the makepkg
+    // contract (`$pkgdir`, `$srcdir`, `$startdir`) that real PKGBUILDs use.
+    let pkgdir = ctx.pkgdir.display().to_string();
+    let srcdir = ctx.srcdir.display().to_string();
+    let builddir = ctx.build_root.display().to_string();
+    let startdir = ctx.startdir.display().to_string();
+
+    env.insert("PKGDIR".into(), pkgdir.clone());
+    env.insert("SRCDIR".into(), srcdir.clone());
+    env.insert("BUILDDIR".into(), builddir);
+    env.insert("pkgdir".into(), pkgdir);
+    env.insert("srcdir".into(), srcdir);
+    env.insert("startdir".into(), startdir);
 
     // ── Package metadata ────────────────────────────────────────────────
+    env.insert("pkgbase".into(), ctx.pkgname.clone());
     env.insert("pkgname".into(), ctx.pkgname.clone());
     env.insert("pkgver".into(), ctx.pkgver.clone());
     env.insert("pkgrel".into(), ctx.pkgrel.to_string());
@@ -74,6 +84,15 @@ mod tests {
         assert_eq!(env["SRCDIR"], "/tmp/xpkg-build/hello-1.0/src");
         assert_eq!(env["BUILDDIR"], "/tmp/xpkg-build/hello-1.0");
         assert_eq!(env["startdir"], "/home/user/packages/hello");
+    }
+
+    #[test]
+    fn test_env_exposes_makepkg_lowercase_paths() {
+        // Real PKGBUILDs call `$pkgdir`/`$srcdir`, not the uppercase variants.
+        let env = build_env(&test_config(), &test_context());
+        assert_eq!(env["pkgdir"], env["PKGDIR"]);
+        assert_eq!(env["srcdir"], env["SRCDIR"]);
+        assert_eq!(env["pkgbase"], "hello");
     }
 
     #[test]

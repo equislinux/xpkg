@@ -68,8 +68,7 @@ fn extract_pkginfo(archive_bytes: &[u8]) -> XpkgResult<String> {
 }
 
 fn extract_metadata(archive_bytes: &[u8], target: &str) -> XpkgResult<Option<String>> {
-    let decoder = zstd::Decoder::new(archive_bytes)
-        .map_err(|e| XpkgError::Archive(format!("zstd init: {e}")))?;
+    let decoder = crate::archive::reader::decoded_reader(archive_bytes)?;
     let mut tar = tar::Archive::new(decoder);
 
     for entry in tar
@@ -181,8 +180,7 @@ fn normalize_pkg_version(pkgver_raw: String, pkgrel_raw: Option<String>) -> (Str
 pub fn list_package_files(package_path: &Path) -> XpkgResult<Vec<String>> {
     let raw_bytes = read_archive(package_path)?;
 
-    let decoder = zstd::Decoder::new(raw_bytes.as_slice())
-        .map_err(|e| XpkgError::Archive(format!("zstd init: {e}")))?;
+    let decoder = crate::archive::reader::decoded_reader(raw_bytes.as_slice())?;
     let mut tar = tar::Archive::new(decoder);
 
     let mut files = Vec::new();

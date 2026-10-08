@@ -165,27 +165,35 @@ pub fn run_phase(
     Ok(())
 }
 
+/// Wraps a phase script in a shell function, the way makepkg runs PKGBUILD
+/// functions. This makes `local`, `return` and `declare` usable at the top
+/// level of a phase body, which real recipes rely on.
+fn wrap_phase_script(script: &str) -> String {
+    format!("xpkg_phase() {{\n{script}\n}}\nxpkg_phase\n")
+}
+
 /// Build the shell command for a given phase and fakeroot strategy.
 fn build_command(phase: BuildPhase, script: &str, fakeroot: FakerootStrategy) -> Command {
     let use_wrapper = phase == BuildPhase::Package && fakeroot != FakerootStrategy::None;
+    let wrapped = wrap_phase_script(script);
 
     if use_wrapper {
         match fakeroot {
             FakerootStrategy::UserNamespace => {
                 let mut cmd = Command::new("unshare");
-                cmd.args(["--user", "--map-root-user", "/bin/sh", "-e", "-c", script]);
+                cmd.args(["--user", "--map-root-user", "/bin/sh", "-e", "-c", &wrapped]);
                 cmd
             }
             FakerootStrategy::Fakeroot => {
                 let mut cmd = Command::new("fakeroot");
-                cmd.args(["--", "/bin/sh", "-e", "-c", script]);
+                cmd.args(["--", "/bin/sh", "-e", "-c", &wrapped]);
                 cmd
             }
             FakerootStrategy::None => unreachable!(),
         }
     } else {
         let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-e", "-c", script]);
+        cmd.args(["-e", "-c", &wrapped]);
         cmd
     }
 }
@@ -288,5 +296,22 @@ mod tests {
             &mut log,
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_phase_supports_local_declaration() {
+        // Real PKGBUILD bodies start with `local var=...`; phases run wrapped
+        // in a function so that works under /bin/sh (dash).
+        let mut log = LogWriter::new_null();
+        let env = HashMap::new();
+        let result = run_phase(
+            BuildPhase::Package,
+            "local count=3\ntest \"$count\" = 3",
+            Path::new("/tmp"),
+            &env,
+            FakerootStrategy::None,
+            &mut log,
+        );
+        assert!(result.is_ok(), "local must be accepted: {result:?}");
     }
 }

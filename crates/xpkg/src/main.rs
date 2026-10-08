@@ -134,8 +134,38 @@ fn cmd_build(config: &XpkgConfig, args: &cli::BuildArgs) -> Result<()> {
         keep_builddir: false,
     };
 
+    // ── Fetch sources declared in the recipe ────────────────────────
+    // Downloads are cached (XDG cache by default), checksums are verified and
+    // archives are extracted before the build phases run. Recipes without
+    // `source` skip this step entirely (local-only builds).
+    let source_dir = if raw_recipe.source.urls.is_empty() {
+        None
+    } else {
+        use xpkg_core::source::{DownloadOptions, SourceCache, SourceManager};
+
+        let dir = build_config.options.builddir.join(format!(
+            "{}-{}-sources",
+            raw_recipe.package.name, raw_recipe.package.version
+        ));
+        let manager = SourceManager {
+            cache: SourceCache::new(build_config.options.effective_source_cache()),
+            download_opts: DownloadOptions::default(),
+        };
+        let fetched = manager
+            .fetch_sources(&raw_recipe, &dir)
+            .with_context(|| format!("failed to fetch sources into {}", dir.display()))?;
+        println!("==> Fetched {} source(s)", fetched.len());
+        Some(dir)
+    };
+
     // ── Run build pipeline ──────────────────────────────────────────
-    let result = build_package(&build_config, &raw_recipe, &recipe_dir, None, &options)?;
+    let result = build_package(
+        &build_config,
+        &raw_recipe,
+        &recipe_dir,
+        source_dir.as_deref(),
+        &options,
+    )?;
 
     println!(
         "==> Built {}-{}-{} in {:.1}s",
@@ -206,7 +236,8 @@ fn cmd_lint(_config: &XpkgConfig, args: &cli::LintArgs) -> Result<()> {
     let file = std::fs::File::open(archive_path)
         .with_context(|| format!("failed to open {}", archive_path.display()))?;
 
-    let decoder = zstd::Decoder::new(file)
+    // Compression-agnostic: zstd, gzip, xz or plain tar.
+    let decoder = xpkg_core::archive::decoded_reader(file)
         .with_context(|| format!("failed to decompress {}", archive_path.display()))?;
     let mut archive = tar::Archive::new(decoder);
     archive

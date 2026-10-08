@@ -76,13 +76,19 @@ The repository's own `ROADMAP.md` reports:
   scaffolded, CLI with 8 subcommands, TOML configuration parser,
   XBUILD/PKGBUILD parsers, recipe validation, srcinfo generator, `xpkg new`,
   HTTP downloader with retries, SHA-256/512 checksum verification, archive
-  extraction (tar.gz/xz/bz2/zst, zip), Git clone support and source caching,
-  with 72 unit tests passing.
+  extraction (tar.gz/xz/bz2/zst, zip), Git clone support and source caching.
+  `xpkg build` now wires that pipeline into the build itself: declared sources
+  are fetched (cached under `~/.cache/xpkg/sources` by default), verified and
+  extracted before the phases run, and phases execute wrapped in a shell
+  function so `local`/`return` in real PKGBUILDs work.
 - The **phase checklists** in the same file mark the later phases (build
   engine, metadata generation, archive creation, package linting, repository
-  management, verify/info commands) as complete, with two items still open in
-  Phase 9: integration tests with `xpm` and comparative benchmarks vs
-  `makepkg`. Phase 10 (post-v1.0 future goals) is entirely open.
+  management, verify/info commands) as complete. Phase 9 is complete as well:
+  the xpkg↔xpm lifecycle tests exist and the comparative benchmark vs
+  `makepkg` runs as `cargo test -p xpkg --test bench_makepkg` (methodology and
+  recorded numbers in `docs/BENCHMARKS.md`). The suite counts 265+ unit tests
+  plus integration tests against a local HTTP server, real `makepkg` packages
+  and gzip/xz archives. Phase 10 (post-v1.0 future goals) remains open.
 - `docs/realexample.md` records a real end-to-end run: an `xfetch` package was
   built into a `.xp` artifact with xpkg, inspected, linted, added to a local
   ALPM database and a `file://` repository layout under `x-repo`, and synced

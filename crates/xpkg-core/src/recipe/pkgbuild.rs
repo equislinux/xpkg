@@ -36,6 +36,7 @@ pub fn parse_pkgbuild_str(input: &str) -> Result<Recipe, XpkgError> {
     let provides = extract_array(input, "provides");
     let conflicts = extract_array(input, "conflicts");
     let replaces = extract_array(input, "replaces");
+    let backup = extract_array(input, "backup");
 
     let depends = extract_array(input, "depends");
     let makedepends = extract_array(input, "makedepends");
@@ -63,6 +64,7 @@ pub fn parse_pkgbuild_str(input: &str) -> Result<Recipe, XpkgError> {
             provides,
             conflicts,
             replaces,
+            backup,
         },
         dependencies: DependencySection {
             depends,
@@ -352,5 +354,15 @@ package() {
     fn test_extract_array_multiline() {
         let input = "source=('url1'\n        'url2'\n        'url3')\n";
         assert_eq!(extract_array(input, "source"), vec!["url1", "url2", "url3"]);
+    }
+
+    #[test]
+    fn test_parse_backup_array() {
+        let input = "pkgname=hello\npkgver=1.0\nbackup=('etc/hello.conf' 'etc/other.conf')\n";
+        let recipe = parse_pkgbuild_str(input).expect("parse");
+        assert_eq!(
+            recipe.package.backup,
+            vec!["etc/hello.conf", "etc/other.conf"]
+        );
     }
 }

@@ -58,6 +58,20 @@ pub struct GeneralOptions {
     pub compress: CompressMethod,
     /// Compression level (1-22 for zstd, 1-9 for gzip/xz).
     pub compress_level: u32,
+    /// Directory for the source-file cache (`XBUILD` downloads).
+    pub source_cache: PathBuf,
+}
+
+impl GeneralOptions {
+    /// Effective source cache directory: the configured one, or the XDG
+    /// default (`~/.cache/xpkg/sources`).
+    pub fn effective_source_cache(&self) -> PathBuf {
+        if self.source_cache.as_os_str().is_empty() {
+            crate::source::SourceCache::default_dir()
+        } else {
+            self.source_cache.clone()
+        }
+    }
 }
 
 impl Default for GeneralOptions {
@@ -70,6 +84,8 @@ impl Default for GeneralOptions {
             strip_binaries: true,
             compress: CompressMethod::Zstd,
             compress_level: 19,
+            // Resolved through `effective_source_cache()` (XDG default).
+            source_cache: PathBuf::new(),
         }
     }
 }

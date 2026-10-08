@@ -132,8 +132,19 @@ echo hi > "$PKGDIR/usr/share/doc/prov-test/README"
 fn test_build_warns_on_unpinned_source() {
     let tmp = tempfile::tempdir().unwrap();
 
-    // HTTP source with no checksum and no pinned git ref.
-    let recipe = r#"
+    // Floating local Git source: no checksum and no pinned ref, but still
+    // fetchable, so the build runs and only the lint warning remains.
+    let repo = tmp.path().join("repo.git");
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["config", "user.email", "test@example.com"]);
+    git(&repo, &["config", "user.name", "xpkg test"]);
+    std::fs::write(repo.join("README"), "hello").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-q", "-m", "initial"]);
+
+    let recipe = format!(
+        r#"
 [package]
 name = "warn-test"
 version = "1.0"
@@ -142,15 +153,17 @@ description = "Lint warning test"
 arch = ["any"]
 
 [source]
-urls = ["https://example.com/foo-1.0.tar.gz"]
+urls = ["git+{}"]
 
 [build]
 package = """
 mkdir -p "$PKGDIR/usr/share/doc/warn-test"
 echo hi > "$PKGDIR/usr/share/doc/warn-test/README"
 """
-"#;
-    std::fs::write(tmp.path().join("XBUILD"), recipe).unwrap();
+"#,
+        repo.display()
+    );
+    std::fs::write(tmp.path().join("XBUILD"), &recipe).unwrap();
 
     let output = build_output(tmp.path());
     assert!(

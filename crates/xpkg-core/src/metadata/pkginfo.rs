@@ -33,6 +33,14 @@ pub fn generate_pkginfo(recipe: &Recipe, pkgdir: &Path) -> XpkgResult<String> {
         out.push_str(&format!("url = {url}\n"));
     }
 
+    // `PACKAGER` mirrors makepkg; fall back to the builder identity so
+    // `xpkg info` can always report who produced the package.
+    let packager = std::env::var("PACKAGER")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("xpkg {}", env!("CARGO_PKG_VERSION")));
+    out.push_str(&format!("packager = {packager}\n"));
+
     out.push_str(&format!("builddate = {}\n", repro::build_timestamp()));
     out.push_str(&format!("size = {size}\n"));
 
@@ -53,6 +61,12 @@ pub fn generate_pkginfo(recipe: &Recipe, pkgdir: &Path) -> XpkgResult<String> {
     }
     for r in &pkg.replaces {
         out.push_str(&format!("replaces = {r}\n"));
+    }
+
+    // Configuration files: xpm keeps user edits and writes `.pacnew` instead
+    // of overwriting, and preserves modified files as `.pacsave` on removal.
+    for path in &pkg.backup {
+        out.push_str(&format!("backup = {path}\n"));
     }
 
     // Dependencies.
@@ -117,6 +131,7 @@ mod tests {
                 provides: vec![],
                 conflicts: vec![],
                 replaces: vec![],
+                backup: vec![],
             },
             dependencies: DependencySection {
                 depends: vec!["glibc".into()],
@@ -185,5 +200,21 @@ mod tests {
         assert!(info.contains("provides = hello-bin\n"));
         assert!(info.contains("conflict = hello-git\n"));
         assert!(info.contains("replaces = hello-old\n"));
+    }
+
+    #[test]
+    fn test_pkginfo_emits_backup_and_packager() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut recipe = test_recipe();
+        recipe.package.backup = vec!["etc/hello.conf".into(), "etc/extra.conf".into()];
+
+        let info = generate_pkginfo(&recipe, tmp.path()).unwrap();
+        assert!(info.contains("backup = etc/hello.conf\n"));
+        assert!(info.contains("backup = etc/extra.conf\n"));
+        // `packager` must always be present; `PACKAGER` is not set in tests.
+        assert!(
+            info.contains("packager = xpkg "),
+            "missing packager line: {info}"
+        );
     }
 }

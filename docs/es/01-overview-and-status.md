@@ -79,13 +79,19 @@ El `ROADMAP.md` propio del repositorio informa de:
   XBUILD/PKGBUILD, validación de recetas, generador de srcinfo, `xpkg new`,
   descargador HTTP con reintentos, verificación de checksums SHA-256/512,
   extracción de archivos (tar.gz/xz/bz2/zst, zip), soporte de clonado Git y
-  caché de fuentes, con 72 tests unitarios pasando.
+  caché de fuentes. `xpkg build` ya cablea ese pipeline al build: las fuentes
+  declaradas se descargan (caché por defecto en `~/.cache/xpkg/sources`),
+  verifican y extraen antes de las fases, y las fases se ejecutan envueltas en
+  una función shell para que `local`/`return` de PKGBUILDs reales funcionen.
 - Las **listas de fases** del mismo fichero marcan las fases posteriores
   (motor de build, generación de metadatos, creación de archivos, linting de
-  paquetes, gestión de repositorios, comandos verify/info) como completas,
-  quedando dos ítems abiertos en la Fase 9: tests de integración con `xpm` y
-  benchmarks comparativos frente a `makepkg`. La Fase 10 (objetivos futuros
-  post-v1.0) está íntegramente abierta.
+  paquetes, gestión de repositorios, comandos verify/info) como completas. La
+  Fase 9 también está completa: existen los tests de ciclo con `xpm` y el
+  benchmark comparativo frente a `makepkg` se ejecuta con
+  `cargo test -p xpkg --test bench_makepkg` (metodología y números en
+  `docs/BENCHMARKS.md`). La suite suma 265+ tests unitarios más tests de
+  integración contra un servidor HTTP local, paquetes reales de `makepkg` y
+  archivos gzip/xz. La Fase 10 (objetivos futuros post-v1.0) sigue abierta.
 - `docs/realexample.md` registra una ejecución real de punta a punta: se
   construyó un paquete `xfetch` a `.xp` con xpkg, se inspeccionó, se hizo lint,
   se añadió a una base de datos ALPM local y a un layout de repositorio

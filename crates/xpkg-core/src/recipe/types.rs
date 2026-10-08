@@ -48,6 +48,10 @@ pub struct PackageSection {
     /// Packages this package replaces.
     #[serde(default)]
     pub replaces: Vec<String>,
+    /// Configuration files shipped by the package (`backup` entries).
+    /// Consumers (xpm) use this for `.pacnew`/`.pacsave` handling.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backup: Vec<String>,
 }
 
 fn default_release() -> u32 {

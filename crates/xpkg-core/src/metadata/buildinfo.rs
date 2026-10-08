@@ -107,6 +107,7 @@ mod tests {
                 provides: vec![],
                 conflicts: vec![],
                 replaces: vec![],
+                backup: vec![],
             },
             dependencies: DependencySection::default(),
             source: SourceSection::default(),

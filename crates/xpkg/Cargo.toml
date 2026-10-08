@@ -24,3 +24,4 @@ tar = { workspace = true }
 
 [dev-dependencies]
 sha2 = { workspace = true }
+flate2 = { workspace = true }

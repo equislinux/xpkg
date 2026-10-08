@@ -6,12 +6,16 @@
 
 Phases 0–9 complete — the CLI ships `build`, `lint`, `info`, `verify`, `new`,
 `srcinfo`, `repo-add`, `repo-remove` and `repo-prune`, including the build
-engine, `.PKGINFO`/`.BUILDINFO`/`.MTREE` generation, signing, linting, ALPM
-repo DBs with retention, `history.json` with provenance and
-`SOURCE_DATE_EPOCH` reproducibility. Test suite: ~260 `#[test]` across unit
-and integration tests (including the xpkg↔xpm lifecycle), clippy/fmt clean.
+engine, `.PKGINFO`/`.BUILDINFO`/`.MTREE` generation (with `backup` and
+`packager`), signing, linting, ALPM repo DBs with retention, `history.json`
+with provenance and `SOURCE_DATE_EPOCH` reproducibility. `build` now fetches,
+verifies and extracts recipe sources (cached), and all archive readers accept
+zstd, gzip, xz and plain tar. Test suite: 265+ `#[test]` across unit and
+integration tests (xpkg↔xpm lifecycle, local HTTP server journeys, real
+`makepkg` packages, comparative benchmark vs makepkg), clippy/fmt clean.
 `repo-add`/`repo-remove` also maintain the ALPM `.files` database.
-Remaining: benchmarks vs makepkg (#57) and the Phase 10 post-v1.0 items.
+Remaining: the Phase 10 post-v1.0 items (split packages, clean chroot, batch
+builds, VCS version detection, AUR-like helpers, translations).
 xpkg is **not** the active
 builder of `[x]` yet: `x-repo/build-packages.sh` still uses PKGBUILD +
 makepkg.
@@ -115,7 +119,9 @@ makepkg.
 - [x] Implement xpkg verify subcommand — validate .xp package integrity and signatures (#54)
 - [x] Implement xpkg info subcommand — display metadata from a .xp archive without installing (#55)
 - [x] Integration tests with xpm — build packages with xpkg and install with xpm end-to-end (#56)
-- [ ] Run comparative benchmarks vs makepkg — build time, package size, and compression performance (#57)
+- [x] Run comparative benchmarks vs makepkg — build time, package size, and compression performance (#57)
+  - [x] Same PKGBUILD built by both tools; payload hash equality asserted
+  - [x] Results recorded in `docs/BENCHMARKS.md`
 - [x] Complete test suite — unit, integration, and edge-case coverage (#58)
 - [x] Audit error handling — corrupt sources, disk full, interrupted builds, missing dependencies (#59)
 

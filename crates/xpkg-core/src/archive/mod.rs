@@ -22,7 +22,9 @@
 //! of the actual user that ran the build.
 
 mod pack;
+pub mod reader;
 mod strip;
 
 pub use pack::{create_package, PackageOutput};
+pub use reader::{decoded_reader, detect_compression, Compression};
 pub use strip::strip_binaries;
