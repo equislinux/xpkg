@@ -187,13 +187,17 @@ Durante los builds, estas variables se exponen a los scripts de build:
 
 | Variable | Descripción |
 |----------|-------------|
-| `PKGDIR` | Directorio destino de los ficheros instalados |
-| `SRCDIR` | Directorio con los ficheros fuente extraídos |
+| `PKGDIR` / `pkgdir` | Directorio destino de los ficheros instalados |
+| `SRCDIR` / `srcdir` | Directorio con los ficheros fuente extraídos |
+| `pkgbase` | Nombre base del paquete (recetas de un paquete: `pkgname`) |
 | `BUILDDIR` | Directorio de build de nivel superior |
+| `startdir` | Directorio que contiene la receta |
 | `MAKEFLAGS` | Flags de make desde la config |
 | `CFLAGS` | Flags del compilador C desde la config |
 | `CXXFLAGS` | Flags del compilador C++ desde la config |
 | `LDFLAGS` | Flags del linker desde la config |
+
+Las variantes en minúscula son el contrato de makepkg que usan los PKGBUILD reales.
 
 ## Configuración
 
@@ -201,7 +205,7 @@ Fichero de configuración: `~/.config/xpkg/xpkg.conf` (TOML), o cualquier ruta
 pasada con `--config`. Secciones clave:
 
 - `[options]` - builddir, outdir, sign, sign_key, método/nivel de compresión,
-  strip_binaries
+  strip_binaries, source_cache
 - `[environment]` - MAKEFLAGS, CFLAGS, CXXFLAGS, LDFLAGS
 - `[lint]` - activar/desactivar linting, modo estricto
 
@@ -212,6 +216,7 @@ outdir = "."
 strip_binaries = true
 compress = "zstd"       # zstd | gzip | xz
 compress_level = 19
+# source_cache = ""     # vacío = ~/.cache/xpkg/sources
 
 [environment]
 makeflags = "-j$(nproc)"

@@ -54,11 +54,15 @@ xpkg build -d /tmp/mybuild -o ./pkgs  # Custom build and output dirs
 1. Parse and validate the recipe
 2. Lint the recipe sources (`source-unpinned` warnings are reported, never fatal)
 3. Apply CLI overrides (builddir, outdir)
-4. Run the build pipeline (prepare → build → check → package)
-5. Strip ELF binaries (if `strip_binaries = true` in config)
-6. Create `.xp` archive with extended `.BUILDINFO` provenance
+4. Fetch, checksum-verify and extract declared sources (cached under
+   `source_cache`, default `~/.cache/xpkg/sources`); skipped when the recipe
+   has no `[source]`
+5. Run the build pipeline (prepare → build → check → package); phase bodies
+   run wrapped in a shell function and see the makepkg variables
+6. Strip ELF binaries (if `strip_binaries = true` in config)
+7. Create `.xp` archive with extended `.BUILDINFO` provenance
    (`x:recipe_sha256`, `x:source_commit`, `x:tool_version`)
-7. Sign the package (if `--sign` or `sign = true` in config)
+8. Sign the package (if `--sign` or `sign = true` in config)
 
 ---
 
@@ -353,18 +357,24 @@ xpkg repo-remove myrepo.db.tar.zst hello --sign
 |----------|-------------|
 | `RUST_LOG` | Override tracing log level filter (e.g. `RUST_LOG=debug`) |
 | `SOURCE_DATE_EPOCH` | Unix timestamp used for metadata `builddate` and tar entry mtimes |
+| `PACKAGER` | Written to `.PKGINFO` `packager` (falls back to `xpkg <version>`) |
+| `XDG_CACHE_HOME` | Base for the default source cache (`$XDG_CACHE_HOME/xpkg/sources`) |
 
 During builds, these variables are set in the build environment:
 
 | Variable | Description |
 |----------|-------------|
-| `PKGDIR` | Destination directory for installed files |
-| `SRCDIR` | Directory containing extracted source files |
+| `PKGDIR` / `pkgdir` | Destination directory for installed files |
+| `SRCDIR` / `srcdir` | Directory containing extracted source files |
+| `pkgbase` | Base package name (single-package recipes: `pkgname`) |
 | `BUILDDIR` | Top-level build directory |
+| `startdir` | Directory containing the recipe |
 | `MAKEFLAGS` | Make flags from config |
 | `CFLAGS` | C compiler flags from config |
 | `CXXFLAGS` | C++ compiler flags from config |
 | `LDFLAGS` | Linker flags from config |
+
+The lowercase spellings are the makepkg contract that real PKGBUILDs use.
 
 ---
 
@@ -376,6 +386,6 @@ for all available options.
 
 Key configuration sections:
 
-- **`[options]`** — builddir, outdir, sign, sign_key, compress method/level, strip_binaries
+- **`[options]`** — builddir, outdir, sign, sign_key, compress method/level, strip_binaries, source_cache
 - **`[environment]`** — MAKEFLAGS, CFLAGS, CXXFLAGS, LDFLAGS
 - **`[lint]`** — enable/disable linting, strict mode

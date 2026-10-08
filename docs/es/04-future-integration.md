@@ -58,22 +58,24 @@ camino:
   copia `.db`) en layouts estáticos locales, incluido el layout de Pages de
   `x-repo`.
 - `xpm sync` contra mirrors `file://` descargó y parseó esas bases de datos.
-- Salvedades registradas allí: el `xpm` actual solo sincroniza mirrors
-  `.db`/`.files`; la descarga/instalación de paquetes es de una fase posterior
-  de xpm; los repos solo-metadatos con artefactos hospedados en otro sitio
-  (p. ej. GitHub Releases) requieren la composición de la URL de fetch en
-  `xpm`.
+- La salvedad registrada (primera ejecución) de que la descarga/instalación de
+  paquetes era una fase posterior de xpm ya no aplica: `xpm install`/`upgrade`
+  resuelven, descargan, verifican e instalan de punta a punta, y las bases
+  estilo Arch sin `FILENAME` derivan el nombre convencional
+  `name-version-arch.pkg.tar.zst`. Los repos solo-metadatos con artefactos
+  hospedados en otro sitio (p. ej. GitHub Releases) siguen requiriendo la
+  composición de la URL de fetch en `xpm`.
 
 ## Ítems abiertos en este repositorio
 
-Del `ROADMAP.md` de este repositorio (la Fase 9 aún tiene dos ítems sin marcar;
-la Fase 10 está abierta):
+Del `ROADMAP.md` de este repositorio (la Fase 9 está completa; sólo queda
+abierta la Fase 10):
 
-- Tests de integración con xpm - construir paquetes con xpkg e instalarlos con
-  xpm de punta a punta (#56). Bloqueado por el camino de instalación de xpm
-  descrito arriba.
-- Benchmarks comparativos frente a makepkg - tiempo de build, tamaño de
-  paquete, rendimiento de compresión (#57).
+- ~~Tests de integración con xpm (#56).~~ Hecho: la suite de ciclo xpkg↔xpm
+  construye con xpkg e instala/actualiza/elimina con xpm.
+- ~~Benchmarks comparativos frente a makepkg (#57).~~ Hecho:
+  `cargo test -p xpkg --test bench_makepkg`, resultados en
+  `docs/BENCHMARKS.md`.
 - Objetivos futuros de la Fase 10 (post-v1.0): split packages desde un solo
   XBUILD, cross-compilación, builds chroot limpios vía namespaces, builds en
   lote en orden de dependencias, integración de helper tipo AUR, soporte de

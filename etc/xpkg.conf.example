@@ -20,6 +20,10 @@ compress = "zstd"
 # Compression level (1-22 for zstd, 1-9 for gzip/xz).
 compress_level = 19
 
+# Source-file cache directory. Empty (or omitted) uses the XDG default
+# ($XDG_CACHE_HOME/xpkg/sources, usually ~/.cache/xpkg/sources).
+source_cache = ""
+
 [environment]
 # Make flags passed to build systems.
 makeflags = "-j$(nproc)"

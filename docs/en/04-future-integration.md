@@ -53,20 +53,22 @@ that current `xpm sync` understands (see below).
 - `xpkg repo-add` created and updated ALPM databases (`.db.tar.gz` and a
   `.db` copy) in local static layouts, including the `x-repo` Pages layout.
 - `xpm sync` against `file://` mirrors downloaded and parsed those databases.
-- Caveats recorded there: current `xpm` only syncs `.db`/`.files` mirrors;
-  package download/install is part of xpm's later phase; metadata-only repos
-  with artifacts hosted elsewhere (e.g. GitHub Releases) require the fetch-URL
-  composition in `xpm`.
+- The recorded caveat (first run) that package download/install was a later
+  xpm phase no longer applies: `xpm install`/`upgrade` now resolve, download,
+  verify and install end to end, and Arch-style databases without `FILENAME`
+  derive the conventional `name-version-arch.pkg.tar.zst` name. Metadata-only
+  repos with artifacts hosted elsewhere (e.g. GitHub Releases) still require
+  the fetch-URL composition in `xpm`.
 
 ## Open items in this repository
 
-From this repository's `ROADMAP.md` (Phase 9 still has two unchecked items,
-Phase 10 is open):
+From this repository's `ROADMAP.md` (Phase 9 is now complete; only Phase 10
+remains open):
 
-- Integration tests with xpm - build packages with xpkg and install with xpm
-  end to end (#56). Blocked on the xpm install path described above.
-- Comparative benchmarks vs makepkg - build time, package size, compression
-  performance (#57).
+- ~~Integration tests with xpm (#56).~~ Done: the xpkg↔xpm lifecycle suite
+  builds with xpkg and installs/upgrades/removes with xpm.
+- ~~Comparative benchmarks vs makepkg (#57).~~ Done:
+  `cargo test -p xpkg --test bench_makepkg`, results in `docs/BENCHMARKS.md`.
 - Phase 10 future goals (post-v1.0): split packages from one XBUILD,
   cross-compilation, clean chroot builds via namespaces, batch builds in
   dependency order, AUR-like helper integration, VCS package support,

@@ -44,6 +44,7 @@ An XBUILD file has four top-level sections:
 | `provides` | `String[]` | no | Virtual package names this package provides |
 | `conflicts` | `String[]` | no | Packages this package conflicts with |
 | `replaces` | `String[]` | no | Packages this package replaces on upgrade |
+| `backup` | `String[]` | no | Configuration files shipped by the package (`etc/hello.conf`). Emitted as `backup = ...` in `.PKGINFO`; package managers keep user edits and write `.pacnew`/`.pacsave` |
 
 **Example:**
 
@@ -56,6 +57,7 @@ description = "GNU Hello — the friendly greeter"
 url = "https://www.gnu.org/software/hello/"
 license = ["GPL-3.0-or-later"]
 arch = ["x86_64"]
+backup = ["etc/hello.conf"]
 ```
 
 ### Name Validation Rules
