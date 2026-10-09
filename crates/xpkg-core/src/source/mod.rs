@@ -46,15 +46,19 @@ impl SourceManager {
     ///
     /// For each source URL the manager will:
     ///
-    /// 1. Check the cache — reuse a cached copy if available.
+    /// 1. **Local files** (no URI scheme) — copy them from `recipe_dir`.
     /// 2. **Git URLs** — clone with `git clone`.
-    /// 3. **HTTP/HTTPS URLs** — download the file.
+    /// 3. **HTTP/HTTPS URLs** — download the file (cached).
     /// 4. Verify SHA-256 / SHA-512 checksums.
-    /// 5. Store the download in the cache for future reuse.
-    /// 6. Extract archives (tar.gz, tar.xz, tar.bz2, tar.zst, zip) into `srcdir`.
+    /// 5. Extract archives (tar.gz, tar.xz, tar.bz2, tar.zst, zip) into `srcdir`.
     ///
-    /// Returns the list of paths for downloaded/cloned sources.
-    pub fn fetch_sources(&self, recipe: &Recipe, srcdir: &Path) -> Result<Vec<PathBuf>, XpkgError> {
+    /// Returns the list of paths for copied/downloaded/cloned sources.
+    pub fn fetch_sources(
+        &self,
+        recipe: &Recipe,
+        recipe_dir: &Path,
+        srcdir: &Path,
+    ) -> Result<Vec<PathBuf>, XpkgError> {
         fs::create_dir_all(srcdir).map_err(|e| {
             XpkgError::Io(std::io::Error::new(
                 e.kind(),
@@ -69,6 +73,33 @@ impl SourceManager {
         let mut results = Vec::with_capacity(urls.len());
 
         for (i, url) in urls.iter().enumerate() {
+            // ── Local sources (makepkg parity) ──────────────────────
+            // A source without a URI scheme refers to a file that ships next
+            // to the recipe (`$startdir` in makepkg terms). Git URLs may also
+            // be scheme-less local paths (git+/path, /path/repo.git#tag).
+            if !is_git_url(url) && !url.contains("://") {
+                let local = recipe_dir.join(url);
+                if !local.is_file() {
+                    return Err(XpkgError::SourceDownload(format!(
+                        "local source '{url}' not found next to the recipe (looked at {})",
+                        local.display()
+                    )));
+                }
+                let dest = srcdir.join(url);
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&local, &dest)?;
+                if let Some(sum) = sha256.get(i) {
+                    verify_checksum(&dest, sum, ChecksumAlgo::Sha256)?;
+                }
+                if let Some(sum) = sha512.get(i) {
+                    verify_checksum(&dest, sum, ChecksumAlgo::Sha512)?;
+                }
+                results.push(dest);
+                continue;
+            }
+
             // ── Git sources ─────────────────────────────────────────
             if is_git_url(url) {
                 let dest = srcdir.join(git_dir_name(url));
@@ -168,5 +199,58 @@ mod tests {
             git_dir_name("git+https://github.com/user/tool.git#tag=v1.0"),
             "tool"
         );
+    }
+
+    #[test]
+    fn test_fetch_local_source_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("logo.svg"), b"<svg/>").unwrap();
+        fs::write(
+            tmp.path().join("PKGBUILD"),
+            "pkgname=demo\npkgver=1\npkgrel=1\nsource=('logo.svg')\nsha256sums=('SKIP')\n",
+        )
+        .unwrap();
+        let recipe = crate::recipe::parse_pkgbuild(&tmp.path().join("PKGBUILD")).unwrap();
+        let srcdir = tmp.path().join("src");
+        let manager = SourceManager::new(tmp.path().join("cache"));
+        let got = manager.fetch_sources(&recipe, tmp.path(), &srcdir).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(
+            fs::read_to_string(srcdir.join("logo.svg")).unwrap(),
+            "<svg/>"
+        );
+    }
+
+    #[test]
+    fn test_fetch_local_source_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("PKGBUILD"),
+            "pkgname=demo\npkgver=1\npkgrel=1\nsource=('nope.svg')\n",
+        )
+        .unwrap();
+        let recipe = crate::recipe::parse_pkgbuild(&tmp.path().join("PKGBUILD")).unwrap();
+        let manager = SourceManager::new(tmp.path().join("cache"));
+        let err = manager
+            .fetch_sources(&recipe, tmp.path(), &tmp.path().join("src"))
+            .unwrap_err();
+        assert!(err.to_string().contains("local source"));
+    }
+
+    #[test]
+    fn test_fetch_local_source_checksum_enforced() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("data.txt"), b"hello\n").unwrap();
+        let good = "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03";
+        let bad = "0000000000000000000000000000000000000000000000000000000000000000";
+        for (sum, should_pass) in [(good, true), (bad, false)] {
+            let pkgbuild =
+                format!("pkgname=demo\npkgver=1\npkgrel=1\nsource=('data.txt')\nsha256sums=('{sum}')\n");
+            fs::write(tmp.path().join("PKGBUILD"), pkgbuild).unwrap();
+            let recipe = crate::recipe::parse_pkgbuild(&tmp.path().join("PKGBUILD")).unwrap();
+            let manager = SourceManager::new(tmp.path().join("cache"));
+            let res = manager.fetch_sources(&recipe, tmp.path(), &tmp.path().join("src"));
+            assert_eq!(res.is_ok(), should_pass, "checksum {sum}");
+        }
     }
 }

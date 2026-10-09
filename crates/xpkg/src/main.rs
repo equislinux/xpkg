@@ -152,7 +152,7 @@ fn cmd_build(config: &XpkgConfig, args: &cli::BuildArgs) -> Result<()> {
             download_opts: DownloadOptions::default(),
         };
         let fetched = manager
-            .fetch_sources(&raw_recipe, &dir)
+            .fetch_sources(&raw_recipe, &recipe_dir, &dir)
             .with_context(|| format!("failed to fetch sources into {}", dir.display()))?;
         println!("==> Fetched {} source(s)", fetched.len());
         Some(dir)

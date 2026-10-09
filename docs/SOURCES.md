@@ -31,6 +31,20 @@ Standard archive downloads. The filename is derived from the last
 component of the URL path. Supported archive formats are extracted
 automatically after download.
 
+### Local Sources
+
+A source without a URI scheme (and not a Git URL) is a file that ships
+next to the recipe — the `$startdir` convention from makepkg:
+
+```toml
+[source]
+urls = ["logo.svg"]
+```
+
+The file is copied into `$srcdir` and verified with SHA-256/SHA-512 when
+checksums are declared (`SKIP` disables the check). A missing file fails
+the build with the resolved path.
+
 ### Git Sources
 
 Git repositories are cloned using the system `git` command. A URL is
