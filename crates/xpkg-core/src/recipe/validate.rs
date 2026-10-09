@@ -46,7 +46,9 @@ pub fn validate_recipe(recipe: &Recipe) -> Result<(), XpkgError> {
     }
 
     // Validate URLs in source section
-    for url in &recipe.source.urls {
+    for raw in &recipe.source.urls {
+        // `filename::url` renames carry the fetchable URL after the split.
+        let (_, url) = crate::source::split_source_rename(raw);
         // Local files and patch refs are OK, skip them
         if !url.contains("://") && !url.contains("${") {
             continue;
