@@ -43,25 +43,26 @@ pub fn parse_pkgbuild_str(input: &str) -> Result<Recipe, XpkgError> {
     let checkdepends = extract_array(input, "checkdepends");
     let optdepends = extract_array(input, "optdepends");
 
+    let vars = pkg_vars(
+        &pkgname,
+        &pkgver,
+        pkgrel,
+        url.as_deref().unwrap_or_default(),
+        input,
+    );
+    let expand = |s: &str| expand_vars(s, &vars);
+
     let source: Vec<String> = extract_array(input, "source")
         .into_iter()
-        .map(|s| {
-            expand_pkgvars(
-                &s,
-                &pkgname,
-                &pkgver,
-                pkgrel,
-                url.as_deref().unwrap_or_default(),
-            )
-        })
+        .map(|s| expand(&s))
         .collect();
     let sha256sums = extract_array(input, "sha256sums");
     let sha512sums = extract_array(input, "sha512sums");
 
-    let prepare = extract_function(input, "prepare").unwrap_or_default();
-    let build = extract_function(input, "build").unwrap_or_default();
-    let check = extract_function(input, "check").unwrap_or_default();
-    let package = extract_function(input, "package").unwrap_or_default();
+    let prepare = expand(&extract_function(input, "prepare").unwrap_or_default());
+    let build = expand(&extract_function(input, "build").unwrap_or_default());
+    let check = expand(&extract_function(input, "check").unwrap_or_default());
+    let package = expand(&extract_function(input, "package").unwrap_or_default());
 
     Ok(Recipe {
         package: PackageSection {
@@ -258,26 +259,60 @@ fn unquote(s: &str) -> String {
     }
 }
 
-/// Expand the common makepkg variables in source entries
-/// (`$pkgname`, `$pkgver`, `$pkgrel`, `$url`; braced or bare).
-fn expand_pkgvars(s: &str, pkgname: &str, pkgver: &str, pkgrel: u32, url: &str) -> String {
-    let rel = pkgrel.to_string();
-    let mut out = s.to_string();
-    for (pat, val) in [
-        ("${pkgname}", pkgname),
-        ("${pkgver}", pkgver),
-        ("${pkgrel}", rel.as_str()),
-        ("${url}", url),
-    ] {
-        out = out.replace(pat, val);
+/// Variables visible to PKGBUILD sources and phases: the makepkg basics plus
+/// the private `_`-prefixed helpers commonly defined at the top of Arch
+/// recipes (e.g. `_pkgname`). Scanning stops at the first function.
+fn pkg_vars(
+    pkgname: &str,
+    pkgver: &str,
+    pkgrel: u32,
+    url: &str,
+    input: &str,
+) -> Vec<(String, String)> {
+    let mut vars = vec![
+        ("pkgname".to_string(), pkgname.to_string()),
+        ("pkgver".to_string(), pkgver.to_string()),
+        ("pkgrel".to_string(), pkgrel.to_string()),
+        ("url".to_string(), url.to_string()),
+    ];
+    for line in input.lines() {
+        let line = line.trim_start();
+        if line.contains("() {") || line.contains("()\n") {
+            break;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some(eq) = line.find('=') else { continue };
+        let (name, rest) = line.split_at(eq);
+        if !name.starts_with('_') || name.len() < 2 {
+            continue;
+        }
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let mut val = rest[1..].trim();
+        if val.starts_with('(') {
+            continue;
+        }
+        if val.len() >= 2
+            && ((val.starts_with('"') && val.ends_with('"'))
+                || (val.starts_with('\'') && val.ends_with('\'')))
+        {
+            val = &val[1..val.len() - 1];
+        }
+        vars.push((name.to_string(), val.to_string()));
     }
-    for (pat, val) in [
-        ("$pkgname", pkgname),
-        ("$pkgver", pkgver),
-        ("$pkgrel", rel.as_str()),
-        ("$url", url),
-    ] {
-        out = out.replace(pat, val);
+    vars.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    vars
+}
+
+/// Expands `$name` / `${name}` for every variable in `vars`.
+fn expand_vars(s: &str, vars: &[(String, String)]) -> String {
+    let mut out = s.to_string();
+    for (name, val) in vars {
+        out = out.replace(&format!("${{{name}}}"), val);
+    }
+    for (name, val) in vars {
+        out = out.replace(&format!("${name}"), val);
     }
     out
 }
@@ -372,6 +407,16 @@ package() {
             "demo-1.2.tar.gz::https://example.com/dl/v1.2/demo.tar.gz"
         );
         assert_eq!(recipe.source.urls[1], "local-3.txt");
+    }
+
+    #[test]
+    fn test_private_vars_expanded() {
+        let input = "pkgname=demo\npkgver=1\npkgrel=1\n_pkgname=realname\n\
+                     source=(\"git+https://example.com/$_pkgname.git\")\n\
+                     prepare() {\n  cd \"$_pkgname\"\n}\n";
+        let recipe = parse_pkgbuild_str(input).unwrap();
+        assert_eq!(recipe.source.urls[0], "git+https://example.com/realname.git");
+        assert!(recipe.build.prepare.contains("cd \"realname\""));
     }
 
     #[test]
