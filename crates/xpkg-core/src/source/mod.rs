@@ -59,6 +59,16 @@ impl SourceManager {
         recipe_dir: &Path,
         srcdir: &Path,
     ) -> Result<Vec<PathBuf>, XpkgError> {
+        // makepkg recreates $srcdir on every build; leftovers from a previous
+        // failed run would otherwise break `git clone` and stale-copy files.
+        if srcdir.exists() {
+            fs::remove_dir_all(srcdir).map_err(|e| {
+                XpkgError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("failed to reset srcdir {}: {e}", srcdir.display()),
+                ))
+            })?;
+        }
         fs::create_dir_all(srcdir).map_err(|e| {
             XpkgError::Io(std::io::Error::new(
                 e.kind(),
@@ -301,5 +311,24 @@ mod tests {
             fs::read_to_string(srcdir.join("copy.svg")).unwrap(),
             "<svg/>"
         );
+    }
+
+    #[test]
+    fn test_fetch_sources_resets_srcdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("logo.svg"), b"<svg/>").unwrap();
+        fs::write(
+            tmp.path().join("PKGBUILD"),
+            "pkgname=demo\npkgver=1\npkgrel=1\nsource=('logo.svg')\n",
+        )
+        .unwrap();
+        let recipe = crate::recipe::parse_pkgbuild(&tmp.path().join("PKGBUILD")).unwrap();
+        let srcdir = tmp.path().join("src");
+        let manager = SourceManager::new(tmp.path().join("cache"));
+        manager.fetch_sources(&recipe, tmp.path(), &srcdir).unwrap();
+        fs::write(srcdir.join("stale.txt"), b"stale").unwrap();
+        manager.fetch_sources(&recipe, tmp.path(), &srcdir).unwrap();
+        assert!(!srcdir.join("stale.txt").exists());
+        assert!(srcdir.join("logo.svg").exists());
     }
 }
