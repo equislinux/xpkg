@@ -35,6 +35,13 @@ pub fn build_env(config: &XpkgConfig, ctx: &BuildContext) -> HashMap<String, Str
     env.insert("pkgver".into(), ctx.pkgver.clone());
     env.insert("pkgrel".into(), ctx.pkgrel.to_string());
 
+    // ── Machine architecture (makepkg contract) ─────────────────────────
+    env.insert("CARCH".into(), std::env::consts::ARCH.into());
+    env.insert(
+        "CHOST".into(),
+        format!("{}-pc-linux-gnu", std::env::consts::ARCH),
+    );
+
     // ── Compiler and build flags from config ────────────────────────────
     insert_env_flags(&mut env, &config.environment);
 
@@ -123,5 +130,15 @@ mod tests {
         config.environment.ldflags = "-Wl,--as-needed".into();
         let env = build_env(&config, &test_context());
         assert_eq!(env["LDFLAGS"], "-Wl,--as-needed");
+    }
+
+    #[test]
+    fn test_env_contains_machine_architecture() {
+        let env = build_env(&test_config(), &test_context());
+        assert_eq!(env["CARCH"], std::env::consts::ARCH);
+        assert_eq!(
+            env["CHOST"],
+            format!("{}-pc-linux-gnu", std::env::consts::ARCH)
+        );
     }
 }
