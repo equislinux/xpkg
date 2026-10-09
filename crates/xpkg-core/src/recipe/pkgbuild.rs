@@ -43,7 +43,18 @@ pub fn parse_pkgbuild_str(input: &str) -> Result<Recipe, XpkgError> {
     let checkdepends = extract_array(input, "checkdepends");
     let optdepends = extract_array(input, "optdepends");
 
-    let source = extract_array(input, "source");
+    let source: Vec<String> = extract_array(input, "source")
+        .into_iter()
+        .map(|s| {
+            expand_pkgvars(
+                &s,
+                &pkgname,
+                &pkgver,
+                pkgrel,
+                url.as_deref().unwrap_or_default(),
+            )
+        })
+        .collect();
     let sha256sums = extract_array(input, "sha256sums");
     let sha512sums = extract_array(input, "sha512sums");
 
@@ -247,6 +258,30 @@ fn unquote(s: &str) -> String {
     }
 }
 
+/// Expand the common makepkg variables in source entries
+/// (`$pkgname`, `$pkgver`, `$pkgrel`, `$url`; braced or bare).
+fn expand_pkgvars(s: &str, pkgname: &str, pkgver: &str, pkgrel: u32, url: &str) -> String {
+    let rel = pkgrel.to_string();
+    let mut out = s.to_string();
+    for (pat, val) in [
+        ("${pkgname}", pkgname),
+        ("${pkgver}", pkgver),
+        ("${pkgrel}", rel.as_str()),
+        ("${url}", url),
+    ] {
+        out = out.replace(pat, val);
+    }
+    for (pat, val) in [
+        ("$pkgname", pkgname),
+        ("$pkgver", pkgver),
+        ("$pkgrel", rel.as_str()),
+        ("$url", url),
+    ] {
+        out = out.replace(pat, val);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,6 +359,19 @@ package() {
         assert!(recipe.build.build.contains("make"));
         assert!(recipe.build.check.contains("make check"));
         assert!(recipe.build.package.contains("DESTDIR"));
+    }
+
+    #[test]
+    fn test_source_vars_expanded() {
+        let input = "pkgname=demo\npkgver=1.2\npkgrel=3\nurl=\"https://example.com\"\n\
+                     source=(\"${pkgname}-${pkgver}.tar.gz::${url}/dl/v${pkgver}/demo.tar.gz\"\n\
+                     'local-$pkgrel.txt')\n";
+        let recipe = parse_pkgbuild_str(input).unwrap();
+        assert_eq!(
+            recipe.source.urls[0],
+            "demo-1.2.tar.gz::https://example.com/dl/v1.2/demo.tar.gz"
+        );
+        assert_eq!(recipe.source.urls[1], "local-3.txt");
     }
 
     #[test]

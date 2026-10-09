@@ -72,7 +72,8 @@ impl SourceManager {
 
         let mut results = Vec::with_capacity(urls.len());
 
-        for (i, url) in urls.iter().enumerate() {
+        for (i, raw) in urls.iter().enumerate() {
+            let (rename, url) = split_source_rename(raw);
             // ── Local sources (makepkg parity) ──────────────────────
             // A source without a URI scheme refers to a file that ships next
             // to the recipe (`$startdir` in makepkg terms). Git URLs may also
@@ -85,7 +86,7 @@ impl SourceManager {
                         local.display()
                     )));
                 }
-                let dest = srcdir.join(url);
+                let dest = srcdir.join(rename.unwrap_or(url));
                 if let Some(parent) = dest.parent() {
                     fs::create_dir_all(parent)?;
                 }
@@ -118,7 +119,10 @@ impl SourceManager {
             }
 
             // ── HTTP/HTTPS sources ──────────────────────────────────
-            let fname = filename_from_url(url).unwrap_or_else(|| format!("source-{i}"));
+            let fname = rename
+                .map(str::to_string)
+                .or_else(|| filename_from_url(url))
+                .unwrap_or_else(|| format!("source-{i}"));
             let dest = srcdir.join(&fname);
 
             // Check cache before downloading.
@@ -152,6 +156,18 @@ impl SourceManager {
 
         Ok(results)
     }
+}
+
+/// Splits makepkg's `filename::url` rename syntax into `(name, url)`.
+pub(crate) fn split_source_rename(src: &str) -> (Option<&str>, &str) {
+    if let Some(pos) = src.find("::") {
+        let (name, rest) = src.split_at(pos);
+        let url = &rest[2..];
+        if !name.is_empty() && !name.contains("://") && !url.is_empty() {
+            return (Some(name), url);
+        }
+    }
+    (None, src)
 }
 
 /// Derive a directory name from a git URL for the clone destination.
@@ -252,5 +268,38 @@ mod tests {
             let res = manager.fetch_sources(&recipe, tmp.path(), &tmp.path().join("src"));
             assert_eq!(res.is_ok(), should_pass, "checksum {sum}");
         }
+    }
+
+    #[test]
+    fn test_split_source_rename() {
+        assert_eq!(
+            split_source_rename("name.tar.gz::https://x/y/name.tar.gz"),
+            (Some("name.tar.gz"), "https://x/y/name.tar.gz")
+        );
+        assert_eq!(
+            split_source_rename("https://x/y/name.tar.gz"),
+            (None, "https://x/y/name.tar.gz")
+        );
+        assert_eq!(split_source_rename("file::other"), (Some("file"), "other"));
+    }
+
+    #[test]
+    fn test_fetch_local_source_rename() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("logo.svg"), b"<svg/>").unwrap();
+        fs::write(
+            tmp.path().join("PKGBUILD"),
+            "pkgname=demo\npkgver=1\npkgrel=1\nsource=('copy.svg::logo.svg')\n",
+        )
+        .unwrap();
+        let recipe = crate::recipe::parse_pkgbuild(&tmp.path().join("PKGBUILD")).unwrap();
+        let srcdir = tmp.path().join("src");
+        let manager = SourceManager::new(tmp.path().join("cache"));
+        let got = manager.fetch_sources(&recipe, tmp.path(), &srcdir).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(
+            fs::read_to_string(srcdir.join("copy.svg")).unwrap(),
+            "<svg/>"
+        );
     }
 }
