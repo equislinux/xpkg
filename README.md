@@ -10,8 +10,8 @@
     <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg">
     <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=fff">
     <img alt="Platform" src="https://img.shields.io/badge/Platform-Linux-FCC624?logo=linux&logoColor=000">
-    <img alt="Version" src="https://img.shields.io/github/v/release/equislinux/xpkg?include_prereleases&label=version">
-    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/equislinux/xpkg/ci.yml?branch=main&label=CI&logo=github">
+    <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-blue">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-local%20suite-2ea44f">
 </p>
 
 ---
