@@ -2,7 +2,7 @@
 
 This is one of four documents describing `xpkg`, the Rust package builder of
 the X distribution. It covers what the tool is, its role in the X ecosystem,
-and its honest status within the equislinux *reboot* initiative.
+and its current status in the toolchain.
 
 Related documents in this folder:
 
@@ -46,49 +46,49 @@ GPL-3.0-or-later, org `equislinux`, repository `https://github.com/equislinux/xp
 `xpkg` produces `.xp` packages that `xpm` installs. Both share the same
 package format and metadata structures but are independent binaries.
 
-## Status inside the equislinux reboot
+## Current status
 
-The equislinux *reboot* initiative (see `ROADMAP.md` and `DECISIONS.md` at the
-workspace root, outside this repo) reorganised the organisation and set a new
-direction for the distribution. Its status for the Rust tooling is:
+`xpkg` is not a pending project: it is the builder behind the **native `.xp`
+endpoint** that `xpm` consumes end to end.
 
-- The workspace roadmap phase **"Fase 4 - Tooling Rust (xpm/xpkg)"** is
-  **POSTPONED**. Per the maintainer decision, xpm/xpkg are **not worked on
-  during the reboot**; the tooling is revisited only when the Rust stack is
-  required again (SAT resolver, `.xp` repository).
-- Packaging of the distribution payload during the reboot is done with
-  **PKGBUILD + makepkg** (package `x-scripts`), published to the binary
-  repository **`x-repo`**. xpkg is **not currently used** by the reboot flow.
-- Decision **ADR-0004** records that xpkg/xpm remain the intended packaging
-  and package-management base of the distribution, under a precondition: the
-  `xpm` SAT resolver must be wired to `install` and local `.xp` file installs
-  must work before depending on `xpm` for system bootstrap.
-
-In short: xpkg is in a **REBOOT PENDING** state. The codebase is functional
-and maintained as the future packager, but it is de-prioritised for now and
-does not participate in the current reboot delivery flow.
+- **Endpoint pipeline.** `x-repo/scripts/build-xp.sh` builds and signs every X
+  package (`xpm`, `xpkg`, `x-release`, `x-dev` via XBUILD; `opencode-bin`,
+  `xfetch-bin`, `xtop-git`, `x-scripts` via PKGBUILD) and regenerates
+  `public/x/x86_64` (database, `history.json`, `SHA256SUMS`), published on
+  GitHub Pages under `https://equislinux.github.io/x-repo/x/x86_64/`.
+- **Two parallel paths.** The system itself is still provisioned through the
+  pacman-compatible `[x]` repository built with `build-packages.sh` (makepkg +
+  `repo-add`); the native `.xp` endpoint is the xpm-facing channel. Releasing
+  regenerates both.
+- **Consumed end to end.** `xpm sync`, `search`, dependency resolution and
+  `install` were validated against the published endpoint; the xpkg↔xpm
+  lifecycle suite builds with xpkg and installs/upgrades/removes with xpm.
+- **makepkg parity.** Reviving the endpoint closed real parity gaps in xpkg:
+  local sources next to the recipe, `name::URL` source syntax, expansion of
+  recipe variables (including private `_helpers`) in sources and phases,
+  `CARCH`/`CHOST` exported to phases, and `$srcdir` reset before fetching.
 
 ## Maturity of the codebase
 
 The repository's own `ROADMAP.md` reports:
 
-- **"Current Status" section**: phases 0-3 complete - Cargo workspace
-  scaffolded, CLI with 8 subcommands, TOML configuration parser,
-  XBUILD/PKGBUILD parsers, recipe validation, srcinfo generator, `xpkg new`,
-  HTTP downloader with retries, SHA-256/512 checksum verification, archive
-  extraction (tar.gz/xz/bz2/zst, zip), Git clone support and source caching.
-  `xpkg build` now wires that pipeline into the build itself: declared sources
-  are fetched (cached under `~/.cache/xpkg/sources` by default), verified and
-  extracted before the phases run, and phases execute wrapped in a shell
-  function so `local`/`return` in real PKGBUILDs work.
-- The **phase checklists** in the same file mark the later phases (build
-  engine, metadata generation, archive creation, package linting, repository
-  management, verify/info commands) as complete. Phase 9 is complete as well:
-  the xpkg↔xpm lifecycle tests exist and the comparative benchmark vs
-  `makepkg` runs as `cargo test -p xpkg --test bench_makepkg` (methodology and
-  recorded numbers in `docs/BENCHMARKS.md`). The suite counts 265+ unit tests
-  plus integration tests against a local HTTP server, real `makepkg` packages
-  and gzip/xz archives. Phase 10 (post-v1.0 future goals) remains open.
+- **Phases 0-3 complete** - Cargo workspace scaffolded, CLI with 8
+  subcommands, TOML configuration parser, XBUILD/PKGBUILD parsers, recipe
+  validation, srcinfo generator, `xpkg new`, HTTP downloader with retries,
+  SHA-256/512 checksum verification, archive extraction (tar.gz/xz/bz2/zst,
+  zip), Git clone support and source caching. `xpkg build` wires that pipeline
+  into the build itself: declared sources are fetched (cached under
+  `~/.cache/xpkg/sources` by default), verified and extracted before the
+  phases run, and phases execute wrapped in a shell function so
+  `local`/`return` in real PKGBUILDs work.
+- The **later phases** (build engine, metadata generation, archive creation,
+  package linting, repository management, verify/info commands) are complete,
+  including the `.files` database maintenance and signing. Phase 9 closed with
+  the xpkg↔xpm lifecycle tests and the comparative benchmark vs `makepkg`
+  (`cargo test -p xpkg --test bench_makepkg`, methodology and recorded numbers
+  in `docs/BENCHMARKS.md`). The suite counts 265+ unit tests plus integration
+  tests against a local HTTP server, real `makepkg` packages and gzip/xz
+  archives. Phase 10 (post-v1.0 future goals) remains open.
 - `docs/realexample.md` records a real end-to-end run: an `xfetch` package was
   built into a `.xp` artifact with xpkg, inspected, linted, added to a local
   ALPM database and a `file://` repository layout under `x-repo`, and synced
