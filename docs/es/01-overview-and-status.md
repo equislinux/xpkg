@@ -53,7 +53,7 @@ paquete y estructuras de metadata, pero son binarios independientes.
 
 - **Pipeline del endpoint.** `x-repo/scripts/build-xp.sh` construye y firma
   todos los paquetes X (`xpm`, `xpkg`, `x-release`, `x-dev` vía XBUILD;
-  `opencode-bin`, `xfetch-bin`, `xtop-git`, `x-scripts` vía PKGBUILD) y
+  `opencode-bin`, `x-scripts` vía PKGBUILD) y
   regenera `public/x/x86_64` (base de datos, `history.json`, `SHA256SUMS`),
   publicado en GitHub Pages en `https://equislinux.github.io/x-repo/x/x86_64/`.
 - **Dos vías paralelas.** El sistema se aprovisiona todavía a través del
