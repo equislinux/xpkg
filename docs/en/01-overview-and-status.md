@@ -53,7 +53,7 @@ endpoint** that `xpm` consumes end to end.
 
 - **Endpoint pipeline.** `x-repo/scripts/build-xp.sh` builds and signs every X
   package (`xpm`, `xpkg`, `x-release`, `x-dev` via XBUILD; `opencode-bin`,
-  `xfetch-bin`, `xtop-git`, `x-scripts` via PKGBUILD) and regenerates
+  `x-scripts` via PKGBUILD) and regenerates
   `public/x/x86_64` (database, `history.json`, `SHA256SUMS`), published on
   GitHub Pages under `https://equislinux.github.io/x-repo/x/x86_64/`.
 - **Two parallel paths.** The system itself is still provisioned through the

@@ -380,7 +380,7 @@ fn xpkg_builds_and_publishes_and_xpm_installs_upgrades_removes() {
     );
 
     // ── 4. xpm install into the isolated root ───────────────────────────
-    let install = h.xpm(&["install", PKG]);
+    let install = h.xpm(&["install", "--shell-integration", PKG]);
     assert_success(&install, "xpm install");
     assert!(stdout(&install).contains("1 package(s) installed successfully"));
 
